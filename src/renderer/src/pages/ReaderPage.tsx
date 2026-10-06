@@ -375,6 +375,8 @@ export function ReaderPage() {
         '--reader-size': `${readerSettings?.fontSize ?? 18}px`,
         '--reader-lh': String(readerSettings?.lineHeight ?? 1.9),
         '--reader-font': FONT_STACKS[(readerSettings?.fontFamily ?? 'system') as FontKey].css,
+        // 翻页模式下单栏可用高度，供竖长图限高使用（减去上下内边距）
+        '--reader-col-height': `${Math.max(240, bodySize.height - 58)}px`,
         ...(settings?.appearance.readerBackgroundImage
           ? {
               backgroundImage: `linear-gradient(${theme.bg}cc, ${theme.bg}cc), url("${mediaUrl(
@@ -385,7 +387,7 @@ export function ReaderPage() {
             }
           : {})
       }) as React.CSSProperties,
-    [theme, padding, readerSettings, settings]
+    [theme, padding, readerSettings, settings, bodySize.height]
   )
 
   if (!book) {

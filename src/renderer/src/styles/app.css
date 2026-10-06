@@ -1507,6 +1507,15 @@
   border-radius: 4px;
 }
 
+/* 翻页分栏时，竖长图若超过一栏高度会被推到下一栏并溢出（左栏留白、图片跑出画面），
+   这里按实际栏高限高，保证图文都落在同一栏。 */
+.reader-page.paged img,
+.reader-page.paged svg {
+  max-height: calc(var(--reader-col-height, 560px) - 56px);
+  width: auto;
+  object-fit: contain;
+}
+
 .reader-page h1,
 .reader-page h2,
 .reader-page h3,
@@ -2333,33 +2342,56 @@
   color: var(--text-3);
 }
 
+/* 底栏进度条：外层做成较大的点击/拖动区域，轨道与已读进度用绝对定位画在中间 */
 .reader-progress {
+  flex: 1;
+  height: 20px;
   position: relative;
   cursor: pointer;
-  padding: 6px 0;
-  background-clip: content-box;
+  background: transparent;
+}
+
+.reader-progress::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: 3px;
+  background: #d7dce3;
 }
 
 .reader-progress i {
-  top: 6px;
-  bottom: 6px;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: 3px;
+  background: var(--primary);
+  z-index: 1;
 }
 
 .reader-progress-knob {
   position: absolute;
   top: 50%;
-  width: 11px;
-  height: 11px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   background: #fff;
-  border: 2px solid var(--primary);
+  border: 2.5px solid var(--primary);
   transform: translate(-50%, -50%);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-  opacity: 0;
-  transition: opacity 0.15s;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
   pointer-events: none;
+  z-index: 2;
 }
 
 .reader-progress:hover .reader-progress-knob {
-  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.18);
+}
+
+[data-theme='dark'] .reader-progress::before {
+  background: #454b55;
 }
