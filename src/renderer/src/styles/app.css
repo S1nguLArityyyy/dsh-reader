@@ -1142,6 +1142,7 @@
   place-items: center;
   background: rgba(15, 23, 42, 0.34);
   animation: mask-in 0.16s ease;
+  isolation: isolate;
 }
 
 .modal {
@@ -1153,6 +1154,19 @@
   max-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
+  /* 提前提升为独立合成层：避免飞出时滚动区域留下残影 */
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+.modal-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 关闭动画期间锁住滚动区域，避免滚动内容被单独重绘留下残留 */
+.modal.closing .modal-body {
+  overflow: hidden;
 }
 
 .modal.center {
@@ -1734,6 +1748,7 @@
 
 .page-layer.entering {
   animation: page-in 0.26s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  will-change: transform, opacity;
 }
 
 .page-layer.exiting {
@@ -1741,6 +1756,7 @@
   inset: 0;
   pointer-events: none;
   animation: page-out 0.24s ease both;
+  will-change: transform, opacity;
 }
 
 @keyframes page-in {
@@ -1793,14 +1809,36 @@
 }
 
 .nav-children {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-top: 0;
+  transition: grid-template-rows 0.28s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.22s ease, margin-top 0.28s;
+}
+
+.nav-children.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  margin-top: 4px;
+}
+
+.nav-children-inner {
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 1px;
-  margin: 4px 0 0 15px;
+  margin-left: 15px;
   padding-left: 9px;
   border-left: 1px solid var(--border);
+  transform: translateY(-6px);
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+.nav-children.open .nav-children-inner {
+  overflow: hidden auto;
   max-height: 260px;
-  overflow-y: auto;
+  transform: translateY(0);
 }
 
 .nav-child {

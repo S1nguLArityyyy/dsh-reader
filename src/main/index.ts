@@ -74,7 +74,9 @@ function createWindow(): BrowserWindow {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // 窗口失焦时不要降频：切回来第一次动画才不会掉帧
+      backgroundThrottling: false
     }
   })
 
@@ -222,6 +224,14 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => {
-  if (store) void store.flushAll()
+let quitting = false
+app.on('before-quit', (event) => {
+  // 先等数据落盘再退出，避免最后几秒的进度丢失（或留下 .tmp 半成品）
+  if (quitting || !store) return
+  event.preventDefault()
+  quitting = true
+  void store
+    .flushAll()
+    .catch((err) => log('[quit] 落盘失败', err))
+    .finally(() => app.quit())
 })

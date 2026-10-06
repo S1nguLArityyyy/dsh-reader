@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   BookPlus,
   Check,
+  CheckSquare,
   CloudUpload,
   EyeOff,
   FolderOpen,
@@ -249,6 +250,13 @@ export function LibraryPage() {
               显示全部
             </button>
           ) : null}
+          <button
+            className={`icon-btn${selectMode ? ' active' : ''}`}
+            title={selectMode ? '退出多选' : '多选管理'}
+            onClick={toggleSelectMode}
+          >
+            <CheckSquare size={19} />
+          </button>
           <button className="icon-btn" title="导入 EPUB 文件" onClick={() => void importDialog()}>
             <Upload size={20} />
           </button>
@@ -280,15 +288,6 @@ export function LibraryPage() {
                   导入文件夹
                 </button>
                 <hr />
-                <button
-                  onClick={() => {
-                    close()
-                    toggleSelectMode()
-                  }}
-                >
-                  <Check size={15} />
-                  {selectMode ? '退出多选' : '多选管理'}
-                </button>
                 <button
                   onClick={() => {
                     close()

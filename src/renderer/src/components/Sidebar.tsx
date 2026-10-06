@@ -72,8 +72,8 @@ export function Sidebar() {
         </button>
       </nav>
 
-      {seriesOpen && visibleGroups.length > 0 ? (
-        <div className="nav-children">
+      <div className={`nav-children${seriesOpen && visibleGroups.length > 0 ? ' open' : ''}`}>
+        <div className="nav-children-inner">
           {visibleGroups.map((group) => (
             <button
               key={group.key}
@@ -87,7 +87,7 @@ export function Sidebar() {
             </button>
           ))}
         </div>
-      ) : null}
+      </div>
 
       <div className="sidebar-foot">
         <button className="sync-pill" onClick={() => setSyncModal(true)} title="打开同步状态">

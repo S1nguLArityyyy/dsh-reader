@@ -1,8 +1,9 @@
 import { app } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import type { Book, Progress, SessionRow, Settings } from '../shared/types'
 import { splitVolume, titleFromFileName } from './naming'
 import { percentByPosition } from '../shared/progress'
@@ -24,6 +25,8 @@ type StoreFile = 'settings' | 'library' | 'progress' | 'sessions'
  */
 export class Store {
   readonly dataDir: string
+  /** 书籍文件目录：应用根目录下的 books/ */
+  booksDir: string
   books: Book[] = []
   progress: Record<string, Progress> = {}
   sessions: SessionRow[] = []
@@ -33,10 +36,11 @@ export class Store {
 
   constructor(dataDir: string) {
     this.dataDir = dataDir
+    this.booksDir = resolveBooksDir(dataDir)
   }
 
-  get booksDir(): string {
-    return join(this.dataDir, 'books')
+  get defaultBooksDir(): string {
+    return resolveBooksDir(this.dataDir)
   }
 
   get coversDir(): string {
@@ -85,7 +89,7 @@ export class Store {
   }
 
   async init(): Promise<void> {
-    await mkdir(this.booksDir, { recursive: true })
+    await this.setupBooksDir()
     await mkdir(this.coversDir, { recursive: true })
     await mkdir(this.cacheDir, { recursive: true })
     await mkdir(this.syncDir, { recursive: true })
@@ -103,6 +107,9 @@ export class Store {
     this.books = await this.readJson<Book[]>('library', [])
     this.progress = await this.readJson<Record<string, Progress>>('progress', {})
     this.sessions = await this.readJson<SessionRow[]>('sessions', [])
+
+    // 老版本把书籍副本放在数据目录里，统一迁移到应用根目录的 books/
+    await this.migrateBookFiles()
 
     // 1) 兼容旧版本数据：补齐后来新增的字段，避免读取时 undefined
     // 2) 书名 / 卷号 / 系列归组按当前规则从文件名重算，
@@ -171,6 +178,55 @@ export class Store {
 
   private path(name: StoreFile): string {
     return join(this.dataDir, `${name}.json`)
+  }
+
+  /** 书籍目录准备：应用根目录不可写时（例如装到了 Program Files）回退到数据目录 */
+  private async setupBooksDir(): Promise<void> {
+    try {
+      await mkdir(this.booksDir, { recursive: true })
+      const probe = join(this.booksDir, '.write-test')
+      await writeFile(probe, 'ok', 'utf8')
+      await rm(probe, { force: true })
+    } catch (err) {
+      console.error('[store] 应用根目录不可写，书籍改存到数据目录', err)
+      this.booksDir = join(this.dataDir, 'books')
+      await mkdir(this.booksDir, { recursive: true })
+    }
+  }
+
+  /** 把旧位置（数据目录内）的书籍副本迁移到 books/，用户自己的原始文件不动 */
+  private async migrateBookFiles(): Promise<void> {
+    let changed = false
+    const insideData = (p: string): boolean => resolve(p).startsWith(resolve(this.dataDir) + sep)
+
+    for (const book of this.books) {
+      if (!book.filePath) continue
+      const target = join(this.booksDir, `${book.id}.epub`)
+      if (resolve(book.filePath) === resolve(target)) continue
+
+      if (!existsSync(book.filePath)) {
+        if (existsSync(target)) {
+          book.filePath = target
+          changed = true
+        }
+        continue
+      }
+
+      try {
+        await copyFile(book.filePath, target)
+        // 只删除位于应用数据目录里的旧副本，绝不碰用户自己的文件
+        if (insideData(book.filePath)) await rm(book.filePath, { force: true })
+        book.filePath = target
+        changed = true
+      } catch (err) {
+        console.error(`[store] 迁移《${book.title}》失败`, err)
+      }
+    }
+
+    if (changed) {
+      this.save('library')
+      console.log(`[store] 书籍目录：${this.booksDir}`)
+    }
   }
 
   private async readJson<T>(name: StoreFile, fallback: T): Promise<T> {
@@ -281,4 +337,23 @@ export function resolveDataDir(): string {
   const override = process.env.DSH_DATA_DIR
   if (override && override.trim()) return override.trim()
   return app.getPath('userData')
+}
+
+/**
+ * 应用根目录：
+ *  - 免安装版：PORTABLE_EXECUTABLE_DIR（exe 所在目录，而不是解压出来的临时目录）
+ *  - 安装版：exe 所在目录
+ *  - 开发模式：项目根目录
+ */
+export function appRootDir(): string {
+  const portable = process.env.PORTABLE_EXECUTABLE_DIR
+  if (portable && portable.trim()) return portable.trim()
+  return app.isPackaged ? dirname(process.execPath) : app.getAppPath()
+}
+
+/** 书籍文件存放目录：应用根目录下的 books/，方便直接查看与备份 */
+export function resolveBooksDir(dataDir: string): string {
+  const override = process.env.DSH_BOOKS_DIR
+  if (override && override.trim()) return override.trim()
+  return join(appRootDir(), 'books')
 }
