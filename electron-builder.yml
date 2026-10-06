@@ -1,0 +1,48 @@
+appId: com.dsh.reader
+productName: Dsh Reader
+copyright: Copyright © 2026 Dsh Reader
+
+directories:
+  output: release
+  buildResources: build
+
+# 只打包运行期需要的内容
+files:
+  - out/**/*
+  - package.json
+  - '!**/*.map'
+  - '!**/*.ts'
+
+asar: true
+
+# 走国内镜像，避免从 GitHub 拉 Electron 与打包工具
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: build/icon.ico
+  executableName: DshReader
+  legalTrademarks: Dsh Reader
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Dsh Reader
+  artifactName: DshReader-${version}-setup.${ext}
+  uninstallDisplayName: Dsh Reader ${version}
+
+portable:
+  artifactName: DshReader-${version}-portable.${ext}
+
+# 关闭自动更新相关的发布配置（当前阶段不需要）
+publish: null

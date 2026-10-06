@@ -1,0 +1,132 @@
+:root {
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --panel-soft: #fafbfc;
+  --hover: #f2f4f7;
+  --border: #edeff2;
+  --border-2: #e2e6eb;
+  --text: #1f2329;
+  --text-2: #5f6672;
+  --text-3: #99a0aa;
+  --text-4: #c2c8d0;
+  --primary: #3b6fd4;
+  --primary-hover: #3363c2;
+  --primary-soft: #eaf1fd;
+  --primary-soft-2: #d8e6fb;
+  --danger: #d9534f;
+  --success: #2fa36b;
+  --ring-track: #eef1f5;
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 10px rgba(16, 24, 40, 0.04);
+  --shadow-pop: 0 10px 32px rgba(16, 24, 40, 0.16);
+  --r-lg: 12px;
+  --r-md: 10px;
+  --r-sm: 8px;
+  --sidebar-w: 224px;
+  --font: 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, -apple-system, 'PingFang SC', sans-serif;
+}
+
+[data-theme='dark'] {
+  --bg: #16181c;
+  --panel: #1e2126;
+  --panel-soft: #23262c;
+  --hover: #262a31;
+  --border: #2b2f36;
+  --border-2: #363b44;
+  --text: #e6e8ec;
+  --text-2: #a3a9b3;
+  --text-3: #7d838d;
+  --text-4: #565c66;
+  --primary-soft: #1e2a44;
+  --primary-soft-2: #253659;
+  --ring-track: #2b2f36;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-pop: 0 12px 34px rgba(0, 0, 0, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+select {
+  outline: none;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d5d9e0;
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #c2c8d0;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: #3a3f48;
+  background-clip: content-box;
+}

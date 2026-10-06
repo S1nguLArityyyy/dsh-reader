@@ -1,0 +1,18 @@
+# 依赖与构建产物
+node_modules/
+out/
+release/
+dist/
+*.tsbuildinfo
+
+# 运行期 / 测试产生的数据
+.devdata/
+.testdata/
+.test/
+.smoke/
+.edge-profile/
+*.log
+
+# 可再生成的示例与截图
+samples/
+shots/

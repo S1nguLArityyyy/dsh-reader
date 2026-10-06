@@ -1,0 +1,451 @@
+import { useState } from 'react'
+import {
+  AlertTriangle,
+  Cloud,
+  Eye,
+  FileDown,
+  FileUp,
+  FolderOpen,
+  HardDrive,
+  Info,
+  RefreshCw,
+  Type
+} from 'lucide-react'
+import type { ReaderTheme } from '@shared/types'
+import { useApp } from '../store/app'
+import { SegmentedControl, Slider, Switch } from '../components/ui'
+import { FONT_STACKS, READER_THEMES, type FontKey } from '../lib/reader-theme'
+
+export function SettingsPage() {
+  const settings = useApp((s) => s.settings)
+  const info = useApp((s) => s.info)
+  const sync = useApp((s) => s.sync)
+  const saveSettings = useApp((s) => s.saveSettings)
+  const setSyncModal = useApp((s) => s.setSyncModal)
+  const previewConflicts = useApp((s) => s.previewConflicts)
+  const connectSync = useApp((s) => s.connectSync)
+  const toast = useApp((s) => s.toast)
+
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
+
+  if (!settings) return <div className="page" />
+
+  const reader = settings.reader
+  const syncSettings = settings.sync
+  const theme = READER_THEMES[reader.theme]
+
+  const patchReader = (patch: Partial<typeof reader>): void => {
+    void saveSettings({ reader: { ...reader, ...patch } })
+  }
+
+  const patchSync = (patch: Partial<typeof syncSettings>): void => {
+    void saveSettings({ sync: { ...syncSettings, ...patch } })
+  }
+
+  return (
+    <div className="page">
+      <div className="page-head">
+        <h1 className="page-title">设置</h1>
+      </div>
+
+      <div className="settings-wrap">
+        {/* ---------- 阅读偏好 ---------- */}
+        <section className="setting-card">
+          <h3>
+            <Type size={15} style={{ verticalAlign: -2, marginRight: 6 }} />
+            阅读偏好
+          </h3>
+          <div className="setting-hint">这些设置会立即应用到阅读器，并保存在本机。</div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">字号</div>
+              <div className="setting-desc">正文大小</div>
+            </div>
+            <div className="setting-control">
+              <Slider value={reader.fontSize} min={14} max={30} onChange={(v) => patchReader({ fontSize: v })} />
+              <span className="range-value">{reader.fontSize} px</span>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">行距</div>
+              <div className="setting-desc">行与行之间的距离</div>
+            </div>
+            <div className="setting-control">
+              <Slider
+                value={reader.lineHeight}
+                min={1.4}
+                max={2.6}
+                step={0.1}
+                onChange={(v) => patchReader({ lineHeight: v })}
+              />
+              <span className="range-value">{reader.lineHeight.toFixed(1)}</span>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">版心宽度</div>
+              <div className="setting-desc">正文区域最大宽度</div>
+            </div>
+            <div className="setting-control">
+              <Slider
+                value={reader.pageWidth}
+                min={560}
+                max={920}
+                step={20}
+                onChange={(v) => patchReader({ pageWidth: v })}
+              />
+              <span className="range-value">{reader.pageWidth} px</span>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">页边距</div>
+              <div className="setting-desc">左右留白</div>
+            </div>
+            <div className="setting-control">
+              <Slider
+                value={reader.padding}
+                min={12}
+                max={80}
+                step={4}
+                onChange={(v) => patchReader({ padding: v })}
+              />
+              <span className="range-value">{reader.padding} px</span>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">字体</div>
+              <div className="setting-desc">正文使用的字体族</div>
+            </div>
+            <div className="setting-control">
+              <select
+                className="select"
+                value={reader.fontFamily}
+                onChange={(e) => patchReader({ fontFamily: e.target.value as FontKey })}
+              >
+                {Object.entries(FONT_STACKS).map(([key, spec]) => (
+                  <option key={key} value={key}>
+                    {spec.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">阅读主题</div>
+              <div className="setting-desc">只影响阅读器正文区域</div>
+            </div>
+            <div className="setting-control">
+              <div className="theme-swatches">
+                {(Object.keys(READER_THEMES) as ReaderTheme[]).map((key) => (
+                  <button
+                    key={key}
+                    title={READER_THEMES[key].label}
+                    className={`theme-swatch${reader.theme === key ? ' active' : ''}`}
+                    style={{ background: READER_THEMES[key].swatch, color: READER_THEMES[key].text }}
+                    onClick={() => patchReader({ theme: key })}
+                  >
+                    A
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">翻页方式</div>
+              <div className="setting-desc">滚动阅读或按页翻动</div>
+            </div>
+            <div className="setting-control">
+              <SegmentedControl<'scroll' | 'paged'>
+                value={reader.mode}
+                onChange={(v) => patchReader({ mode: v })}
+                options={[
+                  { value: 'scroll', label: '滚动' },
+                  { value: 'paged', label: '翻页' }
+                ]}
+              />
+            </div>
+          </div>
+
+          <div
+            className="preview-box"
+            style={{
+              background: theme.bg,
+              color: theme.text,
+              fontSize: reader.fontSize,
+              lineHeight: reader.lineHeight,
+              fontFamily: FONT_STACKS[reader.fontFamily].css
+            }}
+          >
+            <p>十月的风从窗缝里钻进来，翻动了桌上的书页。他把书按住，就着午后那点发白的光，又读了一页。</p>
+            <p>“所谓阅读，不过是把别人的时间借来，安放在自己的生命里。”</p>
+          </div>
+        </section>
+
+        {/* ---------- 网盘同步 ---------- */}
+        <section className="setting-card">
+          <h3>
+            <Cloud size={15} style={{ verticalAlign: -2, marginRight: 6 }} />
+            网盘同步
+          </h3>
+          <div className="setting-hint">
+            通过百度网盘交换阅读进度：应用内登录一次，之后自动在该账号的同步文件夹里读写进度文件。
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">账号状态</div>
+              <div className="setting-desc">{sync.loggedIn ? `已连接：${sync.account ?? ''}` : '尚未登录百度网盘'}</div>
+            </div>
+            <div className="setting-control">
+              <span className={`sync-dot${sync.loggedIn ? ' on' : ''}`} />
+              <button className="btn btn-ghost btn-sm" onClick={() => void connectSync()}>
+                {sync.loggedIn ? '重新登录' : '登录百度网盘'}
+              </button>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">云端同步文件夹</div>
+              <div className="setting-desc">进度与书籍文件都会放在这个目录下，不存在时自动创建</div>
+            </div>
+            <div className="setting-control">
+              <input
+                className="input"
+                value={nameDraft ?? syncSettings.remoteDir}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onBlur={() => {
+                  if (nameDraft !== null && nameDraft.trim()) patchSync({ remoteDir: nameDraft.trim() })
+                  setNameDraft(null)
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">自动同步</div>
+              <div className="setting-desc">启动后、退出前各同步一次，并按间隔定时同步</div>
+            </div>
+            <div className="setting-control">
+              <Switch checked={syncSettings.auto} onChange={(v) => patchSync({ auto: v })} />
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">同步间隔</div>
+              <div className="setting-desc">自动同步的时间间隔</div>
+            </div>
+            <div className="setting-control">
+              <select
+                className="select"
+                disabled={!syncSettings.auto}
+                value={syncSettings.intervalMinutes}
+                onChange={(e) => patchSync({ intervalMinutes: Number(e.target.value) })}
+              >
+                {[5, 10, 30, 60].map((m) => (
+                  <option key={m} value={m}>
+                    每 {m} 分钟
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">冲突处理</div>
+              <div className="setting-desc">同一本书两端都有新进度时的默认行为</div>
+            </div>
+            <div className="setting-control">
+              <select
+                className="select"
+                value={syncSettings.conflictPolicy}
+                onChange={(e) => patchSync({ conflictPolicy: e.target.value as 'ask' | 'local' | 'cloud' })}
+              >
+                <option value="ask">总是询问我</option>
+                <option value="local">优先本地</option>
+                <option value="cloud">优先云端</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">同步书籍文件</div>
+              <div className="setting-desc">
+                默认关闭：只同步阅读进度。开启后新导入的书籍会在勾选时上传（受网盘容量与限速影响）
+              </div>
+            </div>
+            <div className="setting-control">
+              <Switch checked={syncSettings.uploadBooks} onChange={(v) => patchSync({ uploadBooks: v })} />
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">立即操作</div>
+              <div className="setting-desc">打开同步状态面板，查看任务、进度与冲突</div>
+            </div>
+            <div className="setting-control">
+              <button className="btn btn-primary btn-sm" onClick={() => setSyncModal(true)}>
+                <RefreshCw size={14} />
+                立即同步
+              </button>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">手动导出 / 导入</div>
+              <div className="setting-desc">网盘不可用时的兜底通道：把进度文件导出或导入</div>
+            </div>
+            <div className="setting-control">
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => toast('info', '导出/导入进度文件将在同步阶段（M5）接入')}
+              >
+                <FileDown size={14} />
+                导出
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => toast('info', '导出/导入进度文件将在同步阶段（M5）接入')}
+              >
+                <FileUp size={14} />
+                导入
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* ---------- 数据与存储 ---------- */}
+        <section className="setting-card">
+          <h3>
+            <HardDrive size={15} style={{ verticalAlign: -2, marginRight: 6 }} />
+            数据与存储
+          </h3>
+          <div className="setting-hint">书库、封面、阅读进度与统计都保存在本机这个目录，关机重启不会丢失。</div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">数据目录</div>
+              <div className="setting-path" style={{ marginTop: 8 }}>
+                {info?.dataDir ?? '—'}
+              </div>
+            </div>
+            <div className="setting-control">
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => info && void window.api.app.openPath(info.dataDir)}
+              >
+                <FolderOpen size={14} />
+                打开目录
+              </button>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">界面主题</div>
+              <div className="setting-desc">应用整体外观</div>
+            </div>
+            <div className="setting-control">
+              <SegmentedControl<'light' | 'dark'>
+                value={settings.theme}
+                onChange={(v) => void saveSettings({ theme: v })}
+                options={[
+                  { value: 'light', label: '浅色' },
+                  { value: 'dark', label: '深色' }
+                ]}
+              />
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">本机设备名</div>
+              <div className="setting-desc">同步时用于标记进度来自哪台设备</div>
+            </div>
+            <div className="setting-control">
+              <span className="setting-path">{settings.deviceName}</span>
+            </div>
+          </div>
+        </section>
+
+        {/* ---------- 关于 ---------- */}
+        <section className="setting-card">
+          <h3>
+            <Info size={15} style={{ verticalAlign: -2, marginRight: 6 }} />
+            关于
+          </h3>
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">版本</div>
+            </div>
+            <div className="setting-control">
+              <span className="setting-hint">v{info?.version ?? '0.1.0'} · 第一阶段（页面结构与交互）</span>
+            </div>
+          </div>
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">支持格式</div>
+            </div>
+            <div className="setting-control">
+              <span className="setting-hint">当前版本仅支持 EPUB，其余格式将在后续版本补充</span>
+            </div>
+          </div>
+        </section>
+
+        {/* ---------- 设计阶段预览入口 ---------- */}
+        <section className="setting-card">
+          <h3>
+            <Eye size={15} style={{ verticalAlign: -2, marginRight: 6 }} />
+            界面预览（设计阶段临时入口）
+          </h3>
+          <div className="setting-hint">
+            同步引擎将在 M5 接入。这里可以单独预览同步相关的两个弹窗，正式接入后会移除。
+          </div>
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">同步状态弹窗</div>
+              <div className="setting-desc">任务计数 · 进度条 · 上次同步时间 · 立即同步 / 取消同步 / 全部下载</div>
+            </div>
+            <div className="setting-control">
+              <button className="btn btn-ghost btn-sm" onClick={() => setSyncModal(true)}>
+                预览
+              </button>
+            </div>
+          </div>
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">进度冲突弹窗</div>
+              <div className="setting-desc">
+                <AlertTriangle size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
+                使用两本示例书籍展示「覆盖云端 / 覆盖本地」的选择交互
+              </div>
+            </div>
+            <div className="setting-control">
+              <button className="btn btn-ghost btn-sm" onClick={previewConflicts}>
+                预览
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}

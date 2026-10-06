@@ -1,0 +1,45 @@
+{
+  "name": "dsh-reader",
+  "productName": "Dsh Reader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dsh Reader - 本地电子书阅读器（EPUB）",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "node scripts/dev.mjs dev",
+    "build": "electron-vite build",
+    "preview": "node scripts/dev.mjs preview",
+    "start": "node scripts/dev.mjs preview",
+    "dist": "npm run build && electron-builder --win",
+    "dist:dir": "npm run build && electron-builder --win --dir",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "samples": "node scripts/make-samples.mjs",
+    "dev:web": "vite --config vite.web.config.ts",
+    "build:web": "vite build --config vite.web.config.ts",
+    "preview:web": "node scripts/serve-web.mjs",
+    "check:epub": "node scripts/epub-check.mjs",
+    "check:backend": "node scripts/backend-check.mjs",
+    "check": "npm run typecheck && npm run check:epub && npm run check:backend",
+    "shot": "node scripts/screenshot.mjs",
+    "shot:web": "node scripts/shot-web.mjs"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.1",
+    "fflate": "^0.8.2",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}
