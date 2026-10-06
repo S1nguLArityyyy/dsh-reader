@@ -121,7 +121,9 @@ release/DshReader-0.1.0-portable/
 
 - 网盘同步引擎（百度网盘登录窗口、进度与书籍文件的上传下载、冲突检测）
 - 除 EPUB 外的格式：TXT / PDF / CBZ / MOBI / AZW3
-- 标签模块、书签笔记、手机端
+- 标签模块、书签笔记、全文搜索、手机端
+
+> v2 的完整待办清单（含实测发现的隐患、优先级建议）见 [docs/v2-plan.md](docs/v2-plan.md)。
 
 ## 目录结构
 
