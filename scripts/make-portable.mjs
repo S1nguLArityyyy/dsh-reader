@@ -68,7 +68,7 @@ console.log(`[portable] 已生成：${dest}`)
  * 实测：exe 位于本项目目录内时，Electron 主进程会在 app ready 之前崩溃（0xC0000003 / 0xC0000005），
  * 放到项目外任意位置（含带空格、带中文的路径）都能正常启动。
  */
-const deployDir = process.env.DSH_DEPLOY_DIR ?? join(`${root.slice(0, 3)}`, 'DshReader')
+const deployDir = process.env.DSH_DEPLOY_DIR ?? join(`${root.slice(0, 3)}`, 'DshReaderApp')
 const insideProject = resolve(deployDir).toLowerCase().startsWith(resolve(root).toLowerCase())
 
 if (insideProject) {
