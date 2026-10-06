@@ -30,6 +30,8 @@ export interface Book {
   volume: string | null
   /** 同系列归组键（去掉卷号后的书名） */
   seriesKey: string | null
+  /** 用户手动指定的合集名，优先于自动归组 */
+  manualSeries: string | null
   addedAt: number
   lastOpenedAt: number | null
   hidden: boolean

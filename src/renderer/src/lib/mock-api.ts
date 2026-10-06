@@ -38,6 +38,7 @@ const BOOKS: Book[] = [
     chapterCount: 4,
     chapterChars: [8200, 9100, 8700, 9400],
     wordCount: 35400,
+    manualSeries: null,
     volume: '1',
     seriesKey: '星海拾遗',
     addedAt: now - 12 * DAY,
@@ -60,6 +61,7 @@ const BOOKS: Book[] = [
     chapterCount: 4,
     chapterChars: [8800, 9200, 8600, 9800],
     wordCount: 36400,
+    manualSeries: null,
     volume: '2',
     seriesKey: '星海拾遗',
     addedAt: now - 9 * DAY,
@@ -82,6 +84,7 @@ const BOOKS: Book[] = [
     chapterCount: 5,
     chapterChars: [4200, 4600, 3900, 5100, 2600],
     wordCount: 20400,
+    manualSeries: null,
     volume: null,
     seriesKey: null,
     addedAt: now - 5 * DAY,
@@ -282,6 +285,9 @@ export function createMockApi(): unknown {
       chooseFolder: async () => null,
       chooseImage: async () => null,
       confirm: async () => window.confirm('浏览器预览模式：确认执行该操作？')
+    },
+    appearance: {
+      pickBackdrop: async () => null
     },
     library: {
       list: async () => (previewEmpty ? [] : BOOKS),

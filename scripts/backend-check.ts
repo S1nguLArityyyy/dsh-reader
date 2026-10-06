@@ -10,6 +10,7 @@ import { SyncService } from '../src/main/sync'
 import { Store } from '../src/main/store'
 import { importMany } from '../src/main/library'
 import { splitVolume } from '../src/main/naming'
+import { percentByPosition } from '../src/shared/progress'
 import type { Book, ChapterPayload, BookOpenPayload, StatsPayload, Settings, Progress } from '../src/shared/types'
 
 let failures = 0
@@ -128,12 +129,19 @@ await store.flushAll()
 const store2 = new Store(dataDir)
 await store2.init()
 check('书库在重启后完整', store2.books.length === books.length, `${store2.books.length} 本`)
-check('阅读进度在重启后保留', store2.progress[first.id]?.percent === 0.42, `${store2.progress[first.id]?.percent}`)
+const restored = store2.books.find((b) => b.id === first.id)!
+const expectedPercent = percentByPosition(restored.chapterChars, restored.wordCount, 1, 0.6)
+check(
+  '进度在重启后按「阅读位置」重算（旧版章节序号值会被改写）',
+  Math.abs((store2.progress[first.id]?.percent ?? -1) - expectedPercent) < 1e-6,
+  `${(store2.progress[first.id]?.percent ?? 0).toFixed(4)}（按位置应为 ${expectedPercent.toFixed(4)}）`
+)
 check('阅读时长在重启后保留', store2.sessions.reduce((s, r) => s + r.seconds, 0) === 900)
 check('设置在重启后保留', store2.settings.reader.fontSize === 23 && store2.settings.sync.intervalMinutes === 30)
 
 const rawLibrary = JSON.parse(readFileSync(join(dataDir, 'library.json'), 'utf8')) as Book[]
 check('library.json 可被外部解析', Array.isArray(rawLibrary) && rawLibrary.length === books.length)
+
 
 /* ---------- 5. 缓存解压与协议 ---------- */
 console.log('\n[5] 缓存与资源')
@@ -173,6 +181,10 @@ const namingCases: [string, string | null, string | null][] = [
   ['安达与岛村 10 试读版', '10', '安达与岛村'],
   ['安达与岛村-第八卷-迷糊轻小说', '8', '安达与岛村'],
   ['安达与岛村-第九卷-迷糊轻小说', '9', '安达与岛村'],
+  // 全角感叹号 + 小数卷号（用户实测资料）
+  ['败北女角太多了！01', '1', '败北女角太多了'],
+  ['败北女角太多了！08.5', '8.5', '败北女角太多了'],
+  ['败北女角太多了！09', '9', '败北女角太多了'],
   ['某书 Vol.3', '3', '某书'],
   ['第十二卷', '12', null],
   ['星海拾遗 01', '1', '星海拾遗'],

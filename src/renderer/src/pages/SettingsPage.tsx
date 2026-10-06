@@ -53,8 +53,13 @@ export function SettingsPage() {
   }
 
   const pickImage = async (field: 'backgroundImage' | 'readerBackgroundImage'): Promise<void> => {
-    const file = await window.api.dialog.chooseImage()
-    if (file) patchAppearance({ [field]: file } as Partial<typeof appearance>)
+    const kind = field === 'backgroundImage' ? 'app' : 'reader'
+    // 由主进程复制进数据目录：协议只允许读取数据目录内的文件
+    const stored = await window.api.appearance.pickBackdrop(kind)
+    if (stored) {
+      patchAppearance({ [field]: stored } as Partial<typeof appearance>)
+      toast('success', '背景图已应用')
+    }
   }
 
   return (

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { percentByPosition } from '@shared/progress'
 import type {
   AppInfo,
   Book,
@@ -98,8 +99,7 @@ function pickStartChapter(payload: { toc: { label: string; chapterIndex: number 
 }
 
 /**
- * 按「读到的位置」计算全书进度：
- * 已读完章节的字数 + 当前章节字数 × 章内位置，再除以全书字数。
+ * 整书进度：按「读到的位置」计算，而不是章节序号。
  * 没有字数数据时退回按章节序号估算。
  */
 export function bookPercent(book: Book | null, chapterIndex: number, scrollRatio: number): number {
@@ -110,10 +110,7 @@ export function bookPercent(book: Book | null, chapterIndex: number, scrollRatio
     const count = Math.max(1, book.chapterCount || 1)
     return Math.min(1, Math.max(0, (chapterIndex + scrollRatio) / count))
   }
-  let before = 0
-  for (let i = 0; i < chapterIndex && i < chars.length; i += 1) before += chars[i]
-  const current = chars[Math.min(chapterIndex, chars.length - 1)] ?? 0
-  return Math.min(1, Math.max(0, (before + current * scrollRatio) / total))
+  return percentByPosition(chars, total, chapterIndex, scrollRatio)
 }
 
 interface AppStore {
@@ -136,6 +133,11 @@ interface AppStore {
   seriesFilter: string | null
   /** 侧边栏系列二级菜单是否展开 */
   seriesOpen: boolean
+  /** 书库搜索词（匹配书名 / 作者 / 系列） */
+  search: string
+  /** 多选管理模式 */
+  selectMode: boolean
+  selected: string[]
 
   init: () => Promise<void>
   go: (route: Route) => void
@@ -145,6 +147,14 @@ interface AppStore {
   closeDetail: () => void
   setSeriesFilter: (key: string | null) => void
   toggleSeries: () => void
+  setSearch: (value: string) => void
+  toggleSelectMode: () => void
+  toggleSelected: (bookId: string) => void
+  selectAll: (ids: string[]) => void
+  clearSelection: () => void
+  bulkRemove: (deleteFile: boolean) => Promise<void>
+  bulkHide: () => Promise<void>
+  setManualSeries: (ids: string[], name: string | null) => Promise<void>
 
   loadBooks: () => Promise<void>
   loadStats: () => Promise<void>
@@ -191,6 +201,9 @@ export const useApp = create<AppStore>((set, get) => ({
   detailBookId: null,
   seriesFilter: null,
   seriesOpen: true,
+  search: '',
+  selectMode: false,
+  selected: [],
 
   async init() {
     try {
@@ -220,6 +233,13 @@ export const useApp = create<AppStore>((set, get) => ({
       if (modal === 'sync') set({ syncModalOpen: true })
       if (modal === 'conflict') get().previewConflicts()
       if (modal === 'detail' && books.length > 0) set({ detailBookId: books[0].id })
+
+      // 便于深链 / 截图的状态参数
+      const searchParam = params.get('search')
+      if (searchParam) set({ search: searchParam })
+      if (params.get('select') === '1' && books.length > 0) {
+        set({ selectMode: true, selected: books.slice(0, 2).map((book) => book.id) })
+      }
 
       // 主进程补齐旧书信息后会通知刷新
       if (typeof window.api.library.onChanged === 'function') {
@@ -267,6 +287,64 @@ export const useApp = create<AppStore>((set, get) => ({
 
   toggleSeries() {
     set({ seriesOpen: !get().seriesOpen })
+  },
+
+  setSearch(value) {
+    set({ search: value })
+  },
+
+  toggleSelectMode() {
+    const next = !get().selectMode
+    set({ selectMode: next, selected: next ? get().selected : [] })
+  },
+
+  toggleSelected(bookId) {
+    const selected = get().selected
+    set({
+      selected: selected.includes(bookId) ? selected.filter((id) => id !== bookId) : [...selected, bookId]
+    })
+  },
+
+  selectAll(ids) {
+    set({ selected: ids })
+  },
+
+  clearSelection() {
+    set({ selected: [] })
+  },
+
+  async bulkRemove(deleteFile) {
+    const ids = get().selected
+    if (ids.length === 0) return
+    const ok = await window.api.dialog.confirm({
+      title: deleteFile ? '批量删除' : '批量移出书库',
+      message: deleteFile ? `确定删除选中的 ${ids.length} 本书吗？` : `确定把选中的 ${ids.length} 本书移出书库吗？`,
+      detail: deleteFile ? '书籍文件与阅读记录都会被删除，此操作不可撤销。' : '仅从书库移除，磁盘上的原文件会保留。',
+      confirmText: deleteFile ? '删除' : '移除',
+      danger: deleteFile
+    })
+    if (!ok) return
+    for (const id of ids) await window.api.library.remove(id, deleteFile)
+    await get().loadBooks()
+    await get().loadStats()
+    set({ selected: [], selectMode: false })
+    get().toast('success', `已处理 ${ids.length} 本书`)
+  },
+
+  async bulkHide() {
+    const ids = get().selected
+    if (ids.length === 0) return
+    for (const id of ids) await window.api.library.update(id, { hidden: true })
+    await get().loadBooks()
+    set({ selected: [], selectMode: false })
+    get().toast('success', `已隐藏 ${ids.length} 本书`)
+  },
+
+  async setManualSeries(ids, name) {
+    if (ids.length === 0) return
+    for (const id of ids) await window.api.library.update(id, { manualSeries: name })
+    await get().loadBooks()
+    get().toast('success', name ? `已归入合集「${name}」` : '已移出合集')
   },
 
   async loadBooks() {

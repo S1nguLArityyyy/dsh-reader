@@ -1153,7 +1153,68 @@
   max-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
+}
+
+.modal.center {
   animation: modal-in 0.18s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+.modal.sheet {
+  animation: sheet-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+.modal.center.closing {
+  animation: modal-out 0.2s ease both;
+}
+
+.modal.sheet.closing {
+  animation: sheet-out 0.22s ease both;
+}
+
+.modal-mask.closing {
+  animation: mask-out 0.22s ease both;
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(44px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sheet-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(44px);
+  }
+}
+
+@keyframes modal-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+@keyframes mask-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 .modal-head {
@@ -2083,4 +2144,184 @@
 [data-has-bg='1'] .setting-card {
   background: color-mix(in srgb, var(--panel) 88%, transparent);
   backdrop-filter: blur(10px);
+}
+
+/* ============ 书库搜索 ============ */
+
+.lib-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  margin-bottom: 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-3);
+  box-shadow: var(--shadow-card);
+}
+
+.lib-search:focus-within {
+  border-color: var(--primary);
+}
+
+.lib-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-size: 13.5px;
+  color: var(--text);
+  outline: none;
+}
+
+.lib-search-input::placeholder {
+  color: var(--text-4);
+}
+
+.group-tag {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.group-tag.manual {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.group-tag.fuzzy {
+  background: var(--hover);
+  color: var(--text-3);
+}
+
+/* ============ 多选管理 ============ */
+
+.book-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  background: rgba(15, 23, 42, 0.38);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  z-index: 3;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.book-check.on {
+  background: var(--primary);
+}
+
+.book-item.selected .book-cover {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.select-bar {
+  position: sticky;
+  bottom: 0;
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  z-index: 20;
+}
+
+.select-count {
+  font-size: 13px;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.select-spacer {
+  flex: 1;
+}
+
+.btn.danger {
+  color: var(--danger);
+}
+
+/* ============ 合集弹窗 ============ */
+
+.collection-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.collection-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  border: 1px solid var(--border-2);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.collection-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ============ 阅读器底栏进度 ============ */
+
+.reader-foot-pct {
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-foot-pct.whole {
+  color: var(--text-3);
+}
+
+.reader-progress {
+  position: relative;
+  cursor: pointer;
+  padding: 6px 0;
+  background-clip: content-box;
+}
+
+.reader-progress i {
+  top: 6px;
+  bottom: 6px;
+}
+
+.reader-progress-knob {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--primary);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+
+.reader-progress:hover .reader-progress-knob {
+  opacity: 1;
 }

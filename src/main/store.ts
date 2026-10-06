@@ -5,6 +5,7 @@ import { hostname } from 'node:os'
 import { join } from 'node:path'
 import type { Book, Progress, SessionRow, Settings } from '../shared/types'
 import { splitVolume, titleFromFileName } from './naming'
+import { percentByPosition } from '../shared/progress'
 
 /** 本地日期键 YYYY-MM-DD */
 export function todayKey(d = new Date()): string {
@@ -132,6 +133,10 @@ export class Store {
         book.metaTitle = book.title ?? ''
         regrouped = true
       }
+      if (book.manualSeries === undefined) {
+        book.manualSeries = null
+        regrouped = true
+      }
 
       const title = titleFromFileName(book.fileName ?? '', book.metaTitle)
       const { volume, seriesKey } = splitVolume(title)
@@ -143,6 +148,25 @@ export class Store {
       }
     }
     if (regrouped) this.save('library')
+
+    // 进度重算：早期版本按「章节序号」存百分比，看上去像章节进度。
+    // 现在字数已就绪，统一改写成按阅读位置计算的整书进度。
+    let progressFixed = false
+    for (const book of this.books) {
+      const record = this.progress[book.id]
+      if (!record || book.chapterChars.length === 0 || book.wordCount <= 0) continue
+      const percent = percentByPosition(
+        book.chapterChars,
+        book.wordCount,
+        record.chapterIndex,
+        record.scrollRatio
+      )
+      if (Math.abs(percent - record.percent) > 0.0005) {
+        record.percent = percent
+        progressFixed = true
+      }
+    }
+    if (progressFixed) this.save('progress')
   }
 
   private path(name: StoreFile): string {

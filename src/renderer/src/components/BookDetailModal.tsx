@@ -33,7 +33,7 @@ export function BookDetailModal() {
   const status = percent >= 0.99 ? '已读完' : percent > 0.001 ? '阅读中' : '未开始'
 
   return (
-    <Modal open={Boolean(book)} title="书籍详情" onClose={closeDetail} width={640}>
+    <Modal open={Boolean(book)} title="书籍详情" onClose={closeDetail} width={640} variant="sheet">
       {book ? (
         <>
           <div className="detail-hero" style={{ background: coverHero(book.coverColor, book.id) }}>

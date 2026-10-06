@@ -41,6 +41,10 @@ const api = {
       danger?: boolean
     }) => invoke<boolean>('dialog:confirm', options)
   },
+  appearance: {
+    /** 选背景图并复制进数据目录，返回可直接用的路径 */
+    pickBackdrop: (kind: 'app' | 'reader') => invoke<string | null>('appearance:pickBackdrop', kind)
+  },
   library: {
     list: () => invoke<Book[]>('library:list'),
     importDialog: () => invoke<ImportResult>('library:importDialog'),

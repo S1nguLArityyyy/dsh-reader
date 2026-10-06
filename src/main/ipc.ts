@@ -1,4 +1,6 @@
 import { app, dialog, ipcMain, shell } from 'electron'
+import { copyFile, mkdir, readdir, rm } from 'node:fs/promises'
+import { extname, join } from 'node:path'
 import type {
   AppInfo,
   Book,
@@ -95,6 +97,34 @@ export function registerIpc(store: Store, sync: SyncService): void {
       filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'] }]
     })
     return result.canceled ? null : result.filePaths[0]
+  })
+
+  /**
+   * 选一张背景图并复制进数据目录。
+   * 必须复制：dsh:// 协议只允许读取数据目录内的文件，直接引用外部路径会加载失败。
+   */
+  handle('appearance:pickBackdrop', async (kind: 'app' | 'reader') => {
+    const result = await dialog.showOpenDialog({
+      title: kind === 'app' ? '选择应用背景图' : '选择阅读器背景图',
+      properties: ['openFile'],
+      filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'] }]
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+
+    const source = result.filePaths[0]
+    const ext = extname(source).toLowerCase() || '.jpg'
+    const assetDir = join(store.dataDir, 'assets')
+    await mkdir(assetDir, { recursive: true })
+    const target = join(assetDir, kind === 'app' ? `background${ext}` : `reader-background${ext}`)
+
+    // 先清掉旧的其他扩展名文件，避免残留
+    for (const name of await readdir(assetDir).catch(() => [] as string[])) {
+      if (name.startsWith(kind === 'app' ? 'background.' : 'reader-background.')) {
+        await rm(join(assetDir, name), { force: true })
+      }
+    }
+    await copyFile(source, target)
+    return target
   })
 
   handle(

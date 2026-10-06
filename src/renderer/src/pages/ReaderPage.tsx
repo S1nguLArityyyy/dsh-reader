@@ -27,7 +27,7 @@ export function ReaderPage() {
   const [pages, setPages] = useState(1)
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 })
 
-  const bodyRef = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   const ratioRef = useRef(0)
   const lastRatioUpdate = useRef(0)
@@ -51,16 +51,19 @@ export function ReaderPage() {
   const screenWidth = columns * columnWidth + (columns - 1) * COLUMN_GAP
   const step = screenWidth + COLUMN_GAP
 
-  /* ---------- 尺寸监听 ---------- */
-  useEffect(() => {
-    const el = bodyRef.current
+  /* ---------- 尺寸监听：用回调 ref，元素挂载/卸载时都能正确接上 ---------- */
+  const observerRef = useRef<ResizeObserver | null>(null)
+  const attachBody = useCallback((el: HTMLDivElement | null) => {
+    bodyRef.current = el
+    observerRef.current?.disconnect()
+    observerRef.current = null
     if (!el) return
     const update = (): void => setBodySize({ width: el.clientWidth, height: el.clientHeight })
     update()
     const observer = new ResizeObserver(update)
     observer.observe(el)
-    return () => observer.disconnect()
-  }, [mode])
+    observerRef.current = observer
+  }, [])
 
   /* ---------- 进度持久化（按读到的位置） ---------- */
   const persist = useCallback((value: number) => {
@@ -315,7 +318,51 @@ export function ReaderPage() {
     [mode, panel, turn]
   )
 
+  /* ---------- 底部进度条：拖动定位（章内） ---------- */
+  const barRef = useRef<HTMLDivElement>(null)
+  const dragSeek = useCallback(
+    (clientX: number) => {
+      const el = barRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const value = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+      if (mode === 'paged') {
+        const target = Math.min(Math.max(0, pages - 1), Math.round(value * Math.max(0, pages - 1)))
+        setPage(target)
+        ratioRef.current = pages > 1 ? target / pages : 0
+        setRatio(ratioRef.current)
+        schedulePersist(ratioRef.current)
+        return
+      }
+      const body = bodyRef.current
+      if (!body) return
+      const max = body.scrollHeight - body.clientHeight
+      const next = max * value
+      body.scrollTop = next
+      ratioRef.current = max > 8 ? next / max : 0
+      setRatio(ratioRef.current)
+      schedulePersist(ratioRef.current)
+    },
+    [mode, pages, schedulePersist]
+  )
+
+  const onBarMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      dragSeek(e.clientX)
+      const onMove = (ev: MouseEvent): void => dragSeek(ev.clientX)
+      const onUp = (): void => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    },
+    [dragSeek]
+  )
+
   const totalPercent = bookPercent(book, chapterIndex, ratio)
+  const chapterRatio = mode === 'paged' ? (pages > 1 ? page / pages : 0) : ratio
 
   const readerStyle = useMemo(
     () =>
@@ -437,7 +484,7 @@ export function ReaderPage() {
 
       <div
         className={`reader-body${mode === 'paged' ? ' paged' : ''}`}
-        ref={bodyRef}
+        ref={attachBody}
         onClick={handleBodyClick}
       >
         {loading && !html ? (
@@ -460,13 +507,13 @@ export function ReaderPage() {
         <button className="icon-btn sm" onClick={() => turn(-1)} title="上一页">
           <ChevronLeft size={17} />
         </button>
-        <span>{percentText(totalPercent)}%</span>
-        <div className="reader-progress">
-          <i style={{ width: `${percentText(totalPercent)}%` }} />
+        <span className="reader-foot-pct">本章 {percentText(chapterRatio)}%</span>
+        <div className="reader-progress" ref={barRef} onMouseDown={onBarMouseDown} title="按住拖动可快速定位">
+          <i style={{ width: `${percentText(chapterRatio)}%` }} />
+          <span className="reader-progress-knob" style={{ left: `${percentText(chapterRatio)}%` }} />
         </div>
-        {mode === 'paged' ? (
-          <span className="reader-hint">点击两侧或滚动滚轮翻页</span>
-        ) : null}
+        <span className="reader-foot-pct whole">全书 {percentText(totalPercent)}%</span>
+        {mode === 'paged' ? <span className="reader-hint">点击两侧或滚动滚轮翻页</span> : null}
         <button className="icon-btn sm" onClick={() => turn(1)} title="下一页">
           <ChevronRight size={17} />
         </button>

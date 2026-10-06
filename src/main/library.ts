@@ -7,6 +7,7 @@ import type { Store } from './store'
 import { extractEpub, readEpubMeta, type EpubMeta } from './epub'
 import { splitVolume, titleFromFileName } from './naming'
 import { countChapterChars, coverColorOf } from './textstats'
+import { percentByPosition } from '../shared/progress'
 
 export { splitVolume }
 
@@ -63,6 +64,7 @@ export async function importEpubFile(store: Store, sourcePath: string): Promise<
     wordCount: 0,
     volume,
     seriesKey,
+    manualSeries: null,
     addedAt: Date.now(),
     lastOpenedAt: null,
     hidden: false,
@@ -106,6 +108,21 @@ export async function enrichBook(store: Store, book: Book, metaIn?: EpubMeta): P
       book.wordCount = counts.reduce((sum, n) => sum + n, 0)
       book.chapterCount = meta.chapterHrefs.length
       changed = true
+
+      // 字数就绪后，把早期按「章节序号」存的进度改写成按阅读位置的整书进度
+      const record = store.progress[book.id]
+      if (record) {
+        const percent = percentByPosition(
+          book.chapterChars,
+          book.wordCount,
+          record.chapterIndex,
+          record.scrollRatio
+        )
+        if (Math.abs(percent - record.percent) > 0.0005) {
+          record.percent = percent
+          store.save('progress')
+        }
+      }
     }
   } catch (err) {
     console.error(`[library] 补齐《${book.title}》信息失败`, err)

@@ -64,8 +64,8 @@ function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 1040,
-    minHeight: 680,
+    minWidth: 820,
+    minHeight: 600,
     show: false,
     backgroundColor: '#f4f5f7',
     title: 'Dsh Reader',
@@ -91,16 +91,26 @@ function createWindow(): BrowserWindow {
   return win
 }
 
-async function loadRoute(win: BrowserWindow, route: string, modal: string): Promise<void> {
+async function loadRoute(win: BrowserWindow, route: string, modal: string, extra = ''): Promise<void> {
+  const extraQuery: Record<string, string> = {}
+  for (const pair of extra.split('&')) {
+    if (!pair) continue
+    const [key, value = ''] = pair.split('=')
+    if (key) extraQuery[key] = value
+  }
+
   const devUrl = process.env.ELECTRON_RENDERER_URL
   if (devUrl) {
     const url = new URL(devUrl)
     url.searchParams.set('route', route)
     if (modal) url.searchParams.set('modal', modal)
+    for (const [key, value] of Object.entries(extraQuery)) url.searchParams.set(key, value)
     await win.loadURL(url.toString())
     return
   }
-  await win.loadFile(join(__dirname, '../renderer/index.html'), { query: { route, modal } })
+  await win.loadFile(join(__dirname, '../renderer/index.html'), {
+    query: { route, modal, ...extraQuery }
+  })
 }
 
 async function runScreenshots(win: BrowserWindow, dir: string): Promise<void> {
@@ -108,8 +118,8 @@ async function runScreenshots(win: BrowserWindow, dir: string): Promise<void> {
   const normalWait = Number(process.env.DSH_SHOT_WAIT ?? 1400)
   const firstWait = Number(process.env.DSH_SHOT_DELAY ?? normalWait)
   for (const [index, item] of shotList.entries()) {
-    const [route = 'library', modal = ''] = item.split(':')
-    await loadRoute(win, route, modal)
+    const [route = 'library', modal = '', extra = ''] = item.split(':')
+    await loadRoute(win, route, modal, extra)
     await wait(index === 0 ? firstWait : normalWait)
     const image = await win.webContents.capturePage()
     const name = item.replace(/[:/\\]/g, '-')

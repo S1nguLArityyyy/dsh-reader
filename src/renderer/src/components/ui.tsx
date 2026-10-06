@@ -11,7 +11,8 @@ export function Modal({
   children,
   footer,
   width = 520,
-  titleExtra
+  titleExtra,
+  variant = 'center'
 }: {
   open: boolean
   title: string
@@ -20,25 +21,50 @@ export function Modal({
   footer?: ReactNode
   width?: number
   titleExtra?: ReactNode
+  /** sheet：从底部飞入飞出 */
+  variant?: 'center' | 'sheet'
 }) {
+  const [visible, setVisible] = useState(open)
+  const [closing, setClosing] = useState(false)
+
   useEffect(() => {
-    if (!open) return
+    if (open) {
+      setVisible(true)
+      setClosing(false)
+      return
+    }
+    if (!visible) return
+    setClosing(true)
+    const timer = window.setTimeout(() => {
+      setVisible(false)
+      setClosing(false)
+    }, 220)
+    return () => window.clearTimeout(timer)
+  }, [open, visible])
+
+  useEffect(() => {
+    if (!visible) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  }, [visible, onClose])
 
-  if (!open) return null
+  if (!visible) return null
   return (
     <div
-      className="modal-mask"
+      className={`modal-mask${closing ? ' closing' : ''}`}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="modal" style={{ width }} role="dialog" aria-modal="true">
+      <div
+        className={`modal ${variant}${closing ? ' closing' : ''}`}
+        style={{ width }}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="modal-head">
           <div className="modal-title">
             {title}

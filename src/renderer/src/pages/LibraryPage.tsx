@@ -1,18 +1,23 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-  ArrowRight,
   BookPlus,
+  Check,
   CloudUpload,
+  EyeOff,
   FolderOpen,
   FolderPlus,
+  Layers,
   MoreHorizontal,
   Play,
+  Search,
   Trash2,
-  Upload
+  Upload,
+  X
 } from 'lucide-react'
 import type { Book } from '@shared/types'
 import { useApp } from '../store/app'
 import { BookCover } from '../components/BookCover'
+import { CollectionModal } from '../components/CollectionModal'
 import { Dropdown, EmptyState, ProgressRing } from '../components/ui'
 import { coverFade, percentText, remainingText } from '../lib/format'
 import { groupBooks, sortBooks } from '../lib/library'
@@ -23,6 +28,16 @@ export function LibraryPage() {
   const settings = useApp((s) => s.settings)
   const seriesFilter = useApp((s) => s.seriesFilter)
   const setSeriesFilter = useApp((s) => s.setSeriesFilter)
+  const search = useApp((s) => s.search)
+  const setSearch = useApp((s) => s.setSearch)
+  const selectMode = useApp((s) => s.selectMode)
+  const selected = useApp((s) => s.selected)
+  const toggleSelectMode = useApp((s) => s.toggleSelectMode)
+  const toggleSelected = useApp((s) => s.toggleSelected)
+  const selectAll = useApp((s) => s.selectAll)
+  const clearSelection = useApp((s) => s.clearSelection)
+  const bulkRemove = useApp((s) => s.bulkRemove)
+  const bulkHide = useApp((s) => s.bulkHide)
   const importDialog = useApp((s) => s.importDialog)
   const importFolderDialog = useApp((s) => s.importFolderDialog)
   const openReader = useApp((s) => s.openReader)
@@ -32,37 +47,59 @@ export function LibraryPage() {
   const saveSettings = useApp((s) => s.saveSettings)
   const toast = useApp((s) => s.toast)
 
+  const [collectionIds, setCollectionIds] = useState<string[] | null>(null)
+
+  // 截图 / 深链用：?collection=1 直接打开合集弹窗
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('collection') !== '1') return
+    if (books.length >= 2) setCollectionIds(books.slice(0, 2).map((book) => book.id))
+  }, [books])
+
   const percentMap = useMemo(
     () => new Map((stats?.books ?? []).map((item) => [item.bookId, item.percent])),
     [stats]
   )
 
-  const sorted = useMemo(() => sortBooks(books, settings?.librarySort ?? 'recent'), [books, settings])
+  const sort = settings?.librarySort ?? 'recent'
+  const query = search.trim().toLowerCase()
+
+  const matched = useMemo(() => {
+    if (!query) return books
+    return books.filter((book) =>
+      [book.title, book.metaTitle, book.author, book.seriesKey, book.manualSeries]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    )
+  }, [books, query])
+
+  const sorted = useMemo(() => sortBooks(matched, sort), [matched, sort])
   const allGroups = useMemo(() => groupBooks(sorted), [sorted])
   const groups = useMemo(
     () => (seriesFilter ? allGroups.filter((g) => g.key === seriesFilter) : allGroups),
     [allGroups, seriesFilter]
   )
+  const activeGroup = allGroups.find((g) => g.key === seriesFilter)
 
   const continueBook = useMemo(() => {
-    if (sorted.length === 0) return null
+    const list = sortBooks(books, 'recent')
+    if (list.length === 0) return null
     if (stats?.todayBookId) {
-      const hit = sorted.find((b) => b.id === stats.todayBookId)
+      const hit = list.find((b) => b.id === stats.todayBookId)
       if (hit) return hit
     }
-    const inProgress = sorted.find((b) => {
+    const inProgress = list.find((b) => {
       const percent = percentMap.get(b.id) ?? 0
       return percent > 0.001 && percent < 0.999
     })
-    return inProgress ?? sorted[0]
-  }, [sorted, stats, percentMap])
+    return inProgress ?? list[0]
+  }, [books, stats, percentMap])
 
   const goalMinutes = settings?.dailyGoalMinutes ?? 30
   const todaySeconds = stats?.todaySeconds ?? 0
   const todayMinutes = Math.floor(todaySeconds / 60)
   const goalPercent = goalMinutes > 0 ? Math.min(1, todayMinutes / goalMinutes) : 0
   const remaining = stats?.todayRemainingSeconds ?? null
-  const bookPercent = continueBook ? (percentMap.get(continueBook.id) ?? 0) : 0
+  const bookProgress = continueBook ? (percentMap.get(continueBook.id) ?? 0) : 0
 
   const confirmDelete = async (book: Book, deleteFile: boolean): Promise<void> => {
     const ok = await window.api.dialog.confirm({
@@ -75,12 +112,139 @@ export function LibraryPage() {
     if (ok) await removeBook(book.id, deleteFile)
   }
 
+  const renderBook = (book: Book): React.ReactNode => {
+    const bookPct = percentMap.get(book.id) ?? 0
+    const isSelected = selected.includes(book.id)
+    return (
+      <div className={`book-item${isSelected ? ' selected' : ''}`} key={book.id}>
+        <div
+          className="book-cover"
+          onClick={() => (selectMode ? toggleSelected(book.id) : openDetail(book.id))}
+        >
+          <BookCover book={book} />
+          {book.volume ? <span className="book-badge">{book.volume}</span> : null}
+          {bookPct > 0.001 ? (
+            <div className="book-progress">
+              <i style={{ width: `${percentText(bookPct)}%` }} />
+            </div>
+          ) : null}
+          <div className="book-overlay">
+            <div className="book-overlay-title">{book.title}</div>
+            <div className="book-overlay-sub">
+              {book.author} · {book.chapterCount} 章 · 已读 {percentText(bookPct)}%
+            </div>
+          </div>
+          {selectMode ? (
+            <span className={`book-check${isSelected ? ' on' : ''}`}>
+              {isSelected ? <Check size={15} /> : null}
+            </span>
+          ) : null}
+        </div>
+
+        {!selectMode ? (
+          <div style={{ position: 'absolute', top: 5, left: 5 }}>
+            <Dropdown
+              align="left"
+              trigger={
+                <span className="book-menu-btn">
+                  <MoreHorizontal size={15} />
+                </span>
+              }
+            >
+              {(close) => (
+                <>
+                  <button
+                    onClick={() => {
+                      close()
+                      openDetail(book.id)
+                    }}
+                  >
+                    <BookPlus size={14} />
+                    查看详情
+                  </button>
+                  <button
+                    onClick={() => {
+                      close()
+                      void openReader(book.id)
+                    }}
+                  >
+                    <Play size={14} />
+                    开始阅读
+                  </button>
+                  <button
+                    onClick={() => {
+                      close()
+                      setCollectionIds([book.id])
+                    }}
+                  >
+                    <Layers size={14} />
+                    归入合集…
+                  </button>
+                  <button
+                    onClick={() => {
+                      close()
+                      void window.api.library.reveal(book.id)
+                    }}
+                  >
+                    <FolderOpen size={14} />
+                    在文件夹中显示
+                  </button>
+                  <button
+                    disabled
+                    title="网盘同步将在 M5 接入"
+                    onClick={() => {
+                      close()
+                      toast('info', '书籍文件上传将在同步阶段接入')
+                    }}
+                  >
+                    <CloudUpload size={14} />
+                    {book.syncUpload ? '取消上传到网盘' : '上传到网盘'}
+                  </button>
+                  <hr />
+                  <button
+                    onClick={() => {
+                      close()
+                      void updateBook(book.id, { hidden: true })
+                    }}
+                  >
+                    <EyeOff size={14} />
+                    暂时隐藏
+                  </button>
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      close()
+                      void confirmDelete(book, false)
+                    }}
+                  >
+                    移出书库（保留文件）
+                  </button>
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      close()
+                      void confirmDelete(book, true)
+                    }}
+                  >
+                    删除书籍与文件
+                  </button>
+                </>
+              )}
+            </Dropdown>
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <div className="page">
       <div className="page-head">
-        <h1 className="page-title">{seriesFilter ? allGroups.find((g) => g.key === seriesFilter)?.title ?? '本地书库' : '本地书库'}</h1>
+        <h1 className="page-title">
+          {query ? '搜索结果' : activeGroup ? activeGroup.title : '本地书库'}
+        </h1>
         <div className="head-actions">
-          {seriesFilter ? (
+          {seriesFilter && !query ? (
             <button className="btn btn-ghost btn-sm" onClick={() => setSeriesFilter(null)}>
               显示全部
             </button>
@@ -119,6 +283,25 @@ export function LibraryPage() {
                 <button
                   onClick={() => {
                     close()
+                    toggleSelectMode()
+                  }}
+                >
+                  <Check size={15} />
+                  {selectMode ? '退出多选' : '多选管理'}
+                </button>
+                <button
+                  onClick={() => {
+                    close()
+                    setCollectionIds(books.map((b) => b.id))
+                  }}
+                >
+                  <Layers size={15} />
+                  批量归入合集…
+                </button>
+                <hr />
+                <button
+                  onClick={() => {
+                    close()
                     void saveSettings({ librarySort: 'recent' })
                   }}
                 >
@@ -146,6 +329,21 @@ export function LibraryPage() {
         </div>
       </div>
 
+      <div className="lib-search">
+        <Search size={16} />
+        <input
+          className="lib-search-input"
+          placeholder="搜索书名、作者或系列…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {search ? (
+          <button className="icon-btn sm" title="清空" onClick={() => setSearch('')}>
+            <X size={15} />
+          </button>
+        ) : null}
+      </div>
+
       {books.length === 0 ? (
         <EmptyState
           icon={<BookPlus size={30} />}
@@ -166,23 +364,19 @@ export function LibraryPage() {
         />
       ) : (
         <>
-          {!seriesFilter ? (
+          {!seriesFilter && !query ? (
             <div
               className="card today-card"
               style={{ background: coverFade(continueBook?.coverColor ?? null, continueBook?.id ?? 'empty') }}
             >
-              <div className="today-cover">
-                {continueBook ? <BookCover book={continueBook} /> : null}
-              </div>
+              <div className="today-cover">{continueBook ? <BookCover book={continueBook} /> : null}</div>
 
               <div className="today-info">
                 <div className="today-label">今日阅读</div>
                 <div className="today-book" title={continueBook?.title}>
                   {continueBook?.title ?? '还没有书籍'}
                 </div>
-                <div className="today-author">
-                  {continueBook?.author ?? '导入一本 EPUB 开始阅读'}
-                </div>
+                <div className="today-author">{continueBook?.author ?? '导入一本 EPUB 开始阅读'}</div>
                 <div className="today-actions">
                   <button
                     className="btn today-btn"
@@ -205,134 +399,91 @@ export function LibraryPage() {
                     今日 {todayMinutes}/{goalMinutes} 分钟
                   </div>
                 </ProgressRing>
-                <div className="today-goal-sub">
-                  本书已读 {percentText(bookPercent)}%
-                </div>
+                <div className="today-goal-sub">全书已读 {percentText(bookProgress)}%</div>
               </div>
             </div>
           ) : null}
 
-          {groups.map((group) => (
-            <section className="lib-section" key={group.key}>
+          {query ? (
+            <section className="lib-section">
               <div className="lib-section-head">
                 <h2 className="section-title">
-                  {group.title}
-                  <span className="section-count">{group.books.length}</span>
+                  共 {sorted.length} 本
+                  <span className="section-count">匹配「{search.trim()}」</span>
                 </h2>
               </div>
-              <div className="book-grid">
-                {group.books.map((book) => {
-                  const bookPct = percentMap.get(book.id) ?? 0
-                  return (
-                    <div className="book-item" key={book.id}>
-                      <div className="book-cover" onClick={() => openDetail(book.id)}>
-                        <BookCover book={book} />
-                        {book.volume ? <span className="book-badge">{book.volume}</span> : null}
-                        {bookPct > 0.001 ? (
-                          <div className="book-progress">
-                            <i style={{ width: `${percentText(bookPct)}%` }} />
-                          </div>
-                        ) : null}
-                        <div className="book-overlay">
-                          <div className="book-overlay-title">{book.title}</div>
-                          <div className="book-overlay-sub">
-                            {book.author} · {book.chapterCount} 章
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ position: 'absolute', top: 5, left: 5 }}>
-                        <Dropdown
-                          align="left"
-                          trigger={
-                            <span className="book-menu-btn">
-                              <MoreHorizontal size={15} />
-                            </span>
-                          }
-                        >
-                          {(close) => (
-                            <>
-                              <button
-                                onClick={() => {
-                                  close()
-                                  openDetail(book.id)
-                                }}
-                              >
-                                <BookPlus size={14} />
-                                查看详情
-                              </button>
-                              <button
-                                onClick={() => {
-                                  close()
-                                  void openReader(book.id)
-                                }}
-                              >
-                                <Play size={14} />
-                                开始阅读
-                              </button>
-                              <button
-                                onClick={() => {
-                                  close()
-                                  void window.api.library.reveal(book.id)
-                                }}
-                              >
-                                <FolderOpen size={14} />
-                                在文件夹中显示
-                              </button>
-                              <button
-                                disabled
-                                title="网盘同步将在 M5 接入"
-                                onClick={() => {
-                                  close()
-                                  toast('info', '书籍文件上传将在同步阶段接入')
-                                }}
-                              >
-                                <CloudUpload size={14} />
-                                {book.syncUpload ? '取消上传到网盘' : '上传到网盘'}
-                              </button>
-                              <hr />
-                              <button
-                                onClick={() => {
-                                  close()
-                                  void updateBook(book.id, { hidden: true })
-                                }}
-                              >
-                                <Trash2 size={14} />
-                                暂时隐藏
-                              </button>
-                              <button
-                                className="danger"
-                                onClick={() => {
-                                  close()
-                                  void confirmDelete(book, false)
-                                }}
-                              >
-                                移出书库（保留文件）
-                              </button>
-                              <button
-                                className="danger"
-                                onClick={() => {
-                                  close()
-                                  void confirmDelete(book, true)
-                                }}
-                              >
-                                删除书籍与文件
-                              </button>
-                            </>
-                          )}
-                        </Dropdown>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+              {sorted.length > 0 ? (
+                <div className="book-grid">{sorted.map(renderBook)}</div>
+              ) : (
+                <EmptyState icon={<Search size={26} />} title="没有找到匹配的书" desc="试试书名、作者或系列名的一部分" />
+              )}
             </section>
-          ))}
+          ) : (
+            groups.map((group) => (
+              <section className="lib-section" key={group.key}>
+                <div className="lib-section-head">
+                  <h2 className="section-title">
+                    {group.title}
+                    <span className="section-count">{group.books.length}</span>
+                    {group.manual ? <span className="group-tag manual">手动合集</span> : null}
+                    {group.fuzzy ? <span className="group-tag fuzzy">模糊匹配</span> : null}
+                  </h2>
+                </div>
+                <div className="book-grid">{group.books.map(renderBook)}</div>
+              </section>
+            ))
+          )}
 
-          {groups.length === 0 ? (
-            <EmptyState icon={<BookPlus size={26} />} title="这个系列里没有书籍" />
+          {groups.length === 0 && !query ? (
+            <EmptyState icon={<BookPlus size={26} />} title="这个合集里没有书籍" />
           ) : null}
         </>
       )}
+
+      {selectMode ? (
+        <div className="select-bar">
+          <span className="select-count">已选 {selected.length} 本</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => selectAll(sorted.map((b) => b.id))}>
+            全选
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={clearSelection} disabled={selected.length === 0}>
+            清空
+          </button>
+          <div className="select-spacer" />
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={selected.length === 0}
+            onClick={() => setCollectionIds(selected)}
+          >
+            <Layers size={14} />
+            归入合集
+          </button>
+          <button className="btn btn-ghost btn-sm" disabled={selected.length === 0} onClick={() => void bulkHide()}>
+            <EyeOff size={14} />
+            隐藏
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={selected.length === 0}
+            onClick={() => void bulkRemove(false)}
+          >
+            移出书库
+          </button>
+          <button
+            className="btn btn-ghost btn-sm danger"
+            disabled={selected.length === 0}
+            onClick={() => void bulkRemove(true)}
+          >
+            <Trash2 size={14} />
+            删除
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={toggleSelectMode}>
+            退出
+          </button>
+        </div>
+      ) : null}
+
+      <CollectionModal bookIds={collectionIds} onClose={() => setCollectionIds(null)} />
     </div>
   )
 }
