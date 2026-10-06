@@ -42,6 +42,17 @@ export const protocol = {
   registerSchemesAsPrivileged: () => undefined
 }
 
+/** 测试环境没有真实图像解码，返回空图即可 */
+export const nativeImage = {
+  createFromPath: () => ({
+    isEmpty: () => true,
+    resize: () => ({
+      getSize: () => ({ width: 0, height: 0 }),
+      toBitmap: () => Buffer.alloc(0)
+    })
+  })
+}
+
 export const BrowserWindow = class {
   static getAllWindows(): unknown[] {
     return []

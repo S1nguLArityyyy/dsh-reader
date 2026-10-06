@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import {
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
-  Info,
-  List,
-  Type
-} from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Info, List, Type } from 'lucide-react'
 import type { ReaderTheme } from '@shared/types'
-import { useApp } from '../store/app'
+import { bookPercent, useApp } from '../store/app'
 import { FONT_STACKS, READER_THEMES, type FontKey } from '../lib/reader-theme'
-import { percentText } from '../lib/format'
+import { mediaUrl, percentText } from '../lib/format'
 import { SegmentedControl, Slider } from '../components/ui'
 
 const COLUMN_GAP = 48
+const MIN_COLUMN = 340
+/** 点击左右多少比例的区域翻页 */
+const TAP_ZONE = 0.28
+/** 滚轮翻页的节流间隔（毫秒） */
+const WHEEL_LOCK = 300
 
 export function ReaderPage() {
   const reader = useApp((s) => s.reader)
@@ -21,11 +19,13 @@ export function ReaderPage() {
   const closeReader = useApp((s) => s.closeReader)
   const goToChapter = useApp((s) => s.goToChapter)
   const saveSettings = useApp((s) => s.saveSettings)
+  const toast = useApp((s) => s.toast)
 
   const [panel, setPanel] = useState<'none' | 'toc' | 'settings'>('none')
   const [ratio, setRatio] = useState(0)
   const [page, setPage] = useState(0)
   const [pages, setPages] = useState(1)
+  const [bodySize, setBodySize] = useState({ width: 0, height: 0 })
 
   const bodyRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
@@ -33,29 +33,47 @@ export function ReaderPage() {
   const lastRatioUpdate = useRef(0)
   const saveTimer = useRef<number | null>(null)
   const restoredBook = useRef<string | null>(null)
+  const pendingAnchor = useRef<string | null>(null)
 
   const readerSettings = settings?.reader
   const theme = READER_THEMES[readerSettings?.theme ?? 'paper']
   const mode = readerSettings?.mode ?? 'scroll'
-  const pageWidth = readerSettings?.pageWidth ?? 720
-
+  const padding = readerSettings?.padding ?? 36
   const { bookId, chapters, chapterIndex, html, loading, book } = reader
 
-  /* ---------- 进度持久化 ---------- */
-  const persist = useCallback(
-    (value: number) => {
-      const state = useApp.getState().reader
-      if (!state.bookId || state.chapters.length === 0) return
-      const percent = (state.chapterIndex + value) / state.chapters.length
-      void window.api.reader.setProgress(state.bookId, {
-        chapterIndex: state.chapterIndex,
-        chapterTitle: state.chapterLabel,
-        scrollRatio: value,
-        percent
-      })
-    },
-    []
-  )
+  /* ---------- 分栏计算：按窗口宽度决定单栏还是双栏 ---------- */
+  const available = Math.max(0, bodySize.width - padding * 2)
+  const columns = mode === 'paged' && available >= MIN_COLUMN * 2 + COLUMN_GAP ? 2 : 1
+  const columnWidth = useMemo(() => {
+    if (columns === 1) return Math.min(readerSettings?.pageWidth ?? 720, Math.max(MIN_COLUMN, available))
+    return Math.floor((available - COLUMN_GAP) / 2)
+  }, [columns, available, readerSettings?.pageWidth])
+  const screenWidth = columns * columnWidth + (columns - 1) * COLUMN_GAP
+  const step = screenWidth + COLUMN_GAP
+
+  /* ---------- 尺寸监听 ---------- */
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const update = (): void => setBodySize({ width: el.clientWidth, height: el.clientHeight })
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [mode])
+
+  /* ---------- 进度持久化（按读到的位置） ---------- */
+  const persist = useCallback((value: number) => {
+    const state = useApp.getState().reader
+    if (!state.bookId || state.chapters.length === 0) return
+    const percent = bookPercent(state.book, state.chapterIndex, value)
+    void window.api.reader.setProgress(state.bookId, {
+      chapterIndex: state.chapterIndex,
+      chapterTitle: state.chapterLabel,
+      scrollRatio: value,
+      percent
+    })
+  }, [])
 
   const schedulePersist = useCallback(
     (value: number) => {
@@ -105,7 +123,7 @@ export function ReaderPage() {
     }
   }, [bookId, persist])
 
-  /* ---------- 滚动进度 ---------- */
+  /* ---------- 滚动模式的进度 ---------- */
   useEffect(() => {
     const el = bodyRef.current
     if (!el || mode !== 'scroll') return
@@ -132,16 +150,17 @@ export function ReaderPage() {
       return
     }
     const el = pageRef.current
-    if (!el) {
+    if (!el || columnWidth <= 0) {
       setPages(1)
       return
     }
-    const total = Math.max(1, Math.round((el.scrollWidth + COLUMN_GAP) / (pageWidth + COLUMN_GAP)))
-    setPages(total)
+    const totalColumns = Math.max(1, Math.round((el.scrollWidth + COLUMN_GAP) / (columnWidth + COLUMN_GAP)))
+    const screens = Math.max(1, Math.ceil(totalColumns / columns))
+    setPages(screens)
     setPage(0)
     ratioRef.current = 0
     setRatio(0)
-  }, [mode, pageWidth, html, chapterIndex, readerSettings?.fontSize, readerSettings?.lineHeight])
+  }, [mode, columnWidth, columns, html, chapterIndex, readerSettings?.fontSize, readerSettings?.lineHeight, bodySize.width])
 
   /* ---------- 恢复上次位置 ---------- */
   useEffect(() => {
@@ -149,23 +168,20 @@ export function ReaderPage() {
     if (restoredBook.current === bookId) return
     restoredBook.current = bookId
     const saved = reader.scrollRatio
-    if (saved > 0.01) {
-      if (mode === 'scroll') {
-        const el = bodyRef.current
-        if (el) {
-          const max = el.scrollHeight - el.clientHeight
-          el.scrollTop = max * saved
-          ratioRef.current = saved
-          setRatio(saved)
-        }
-      } else {
-        const target = Math.min(pages - 1, Math.round(saved * pages))
-        setPage(Math.max(0, target))
+    if (saved <= 0.01) return
+    if (mode === 'scroll') {
+      const el = bodyRef.current
+      if (el) {
+        el.scrollTop = (el.scrollHeight - el.clientHeight) * saved
+        ratioRef.current = saved
+        setRatio(saved)
       }
+    } else {
+      setPage(Math.max(0, Math.min(pages - 1, Math.round(saved * pages))))
     }
   }, [bookId, html, mode, pages, reader.scrollRatio])
 
-  /* ---------- 键盘 ---------- */
+  /* ---------- 翻页 ---------- */
   const turn = useCallback(
     (delta: number) => {
       if (mode === 'paged') {
@@ -191,6 +207,27 @@ export function ReaderPage() {
     [mode, page, pages, chapterIndex, chapters.length, goToChapter, schedulePersist]
   )
 
+  const turnRef = useRef(turn)
+  turnRef.current = turn
+
+  /* ---------- 鼠标滚轮翻页 ---------- */
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el || mode !== 'paged') return
+    let lock = 0
+    const onWheel = (e: WheelEvent): void => {
+      if (Math.abs(e.deltaY) < 6) return
+      e.preventDefault()
+      const now = Date.now()
+      if (now < lock) return
+      lock = now + WHEEL_LOCK
+      turnRef.current(e.deltaY > 0 ? 1 : -1)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [mode, html])
+
+  /* ---------- 键盘 ---------- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
@@ -208,7 +245,77 @@ export function ReaderPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [turn, panel, closeReader])
 
-  const totalPercent = chapters.length > 0 ? (chapterIndex + ratio) / chapters.length : 0
+  /* ---------- 正文内链跳转 ---------- */
+  const scrollToAnchor = useCallback((fragment: string) => {
+    if (!fragment) return
+    const container = bodyRef.current
+    if (!container) return
+    const target =
+      container.querySelector(`[id="${fragment}"]`) ?? container.querySelector(`[name="${fragment}"]`)
+    if (target) target.scrollIntoView({ block: 'start' })
+  }, [])
+
+  useEffect(() => {
+    if (!html) return
+    const fragment = pendingAnchor.current
+    if (!fragment) return
+    pendingAnchor.current = null
+    if (mode === 'scroll') window.requestAnimationFrame(() => scrollToAnchor(fragment))
+  }, [html, mode, scrollToAnchor])
+
+  const handleContentClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const anchor = (e.target as HTMLElement).closest('a')
+      if (!anchor) return
+      const href = anchor.getAttribute('href') ?? ''
+      if (!href.startsWith('#epub:')) return
+      e.preventDefault()
+      e.stopPropagation()
+
+      const rest = href.slice('#epub:'.length)
+      const hashIndex = rest.indexOf('#')
+      const rawPath = hashIndex >= 0 ? rest.slice(0, hashIndex) : rest
+      const fragment = hashIndex >= 0 ? rest.slice(hashIndex + 1) : ''
+      let path = rawPath
+      try {
+        path = decodeURIComponent(rawPath)
+      } catch {
+        /* 保留原值 */
+      }
+
+      const index = chapters.findIndex((chapter) => chapter.href === path)
+      if (index < 0) {
+        toast('info', '该链接指向的内容不在本书章节中')
+        return
+      }
+      if (index === chapterIndex && fragment) {
+        scrollToAnchor(fragment)
+        return
+      }
+      pendingAnchor.current = fragment || null
+      void goToChapter(index)
+    },
+    [chapters, chapterIndex, goToChapter, scrollToAnchor, toast]
+  )
+
+  /* ---------- 点击左右区域翻页；面板打开时点击正文先关面板 ---------- */
+  const handleBodyClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if ((e.target as HTMLElement).closest('a, button, select, input, label')) return
+      if (panel !== 'none') {
+        setPanel('none')
+        return
+      }
+      if (mode !== 'paged') return
+      const rect = e.currentTarget.getBoundingClientRect()
+      const x = (e.clientX - rect.left) / rect.width
+      if (x <= TAP_ZONE) turn(-1)
+      else if (x >= 1 - TAP_ZONE) turn(1)
+    },
+    [mode, panel, turn]
+  )
+
+  const totalPercent = bookPercent(book, chapterIndex, ratio)
 
   const readerStyle = useMemo(
     () =>
@@ -216,16 +323,26 @@ export function ReaderPage() {
         '--reader-bg': theme.bg,
         '--reader-text': theme.text,
         '--reader-quote': theme.quote,
-        '--reader-width': `${pageWidth}px`,
-        '--reader-padding': `${readerSettings?.padding ?? 36}px`,
+        '--reader-width': `${readerSettings?.pageWidth ?? 720}px`,
+        '--reader-padding': `${padding}px`,
         '--reader-size': `${readerSettings?.fontSize ?? 18}px`,
         '--reader-lh': String(readerSettings?.lineHeight ?? 1.9),
-        '--reader-font': FONT_STACKS[(readerSettings?.fontFamily ?? 'system') as FontKey].css
+        '--reader-font': FONT_STACKS[(readerSettings?.fontFamily ?? 'system') as FontKey].css,
+        ...(settings?.appearance.readerBackgroundImage
+          ? {
+              backgroundImage: `linear-gradient(${theme.bg}cc, ${theme.bg}cc), url("${mediaUrl(
+                settings.appearance.readerBackgroundImage
+              )}")`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center'
+            }
+          : {})
       }) as React.CSSProperties,
-    [theme, pageWidth, readerSettings]
+    [theme, padding, readerSettings, settings]
   )
 
-  if (!book) {    return (
+  if (!book) {
+    return (
       <div className="reader" style={readerStyle}>
         <div className="reader-bar">
           <button className="icon-btn sm" onClick={closeReader}>
@@ -248,15 +365,16 @@ export function ReaderPage() {
       style={
         mode === 'paged'
           ? {
-              width: `${pageWidth}px`,
+              width: `${screenWidth}px`,
               maxWidth: 'none',
-              columnWidth: `${pageWidth}px`,
+              columnWidth: `${columnWidth}px`,
               columnGap: `${COLUMN_GAP}px`,
               columnFill: 'auto',
-              transform: `translateX(-${page * (pageWidth + COLUMN_GAP)}px)`
+              transform: `translateX(-${page * step}px)`
             }
           : undefined
       }
+      onClick={handleContentClick}
     >
       <div dangerouslySetInnerHTML={{ __html: html }} />
       <div className="reader-chapter-nav">
@@ -282,7 +400,12 @@ export function ReaderPage() {
 
   return (
     <div className="reader" style={readerStyle}>
-      <div className="reader-bar">
+      <div
+        className="reader-bar"
+        onClick={(e) => {
+          if (!(e.target as HTMLElement).closest('button')) setPanel('none')
+        }}
+      >
         <button className="icon-btn sm" onClick={closeReader} title="返回书库">
           <ArrowLeft size={18} />
         </button>
@@ -291,6 +414,11 @@ export function ReaderPage() {
           {chapterIndex + 1}/{chapters.length} · {reader.chapterLabel}
         </span>
         <div className="reader-spacer" />
+        {mode === 'paged' ? (
+          <span className="reader-bar-sub">
+            {page + 1}/{pages}
+          </span>
+        ) : null}
         <button
           className={`icon-btn sm${panel === 'toc' ? ' active' : ''}`}
           title="目录"
@@ -310,11 +438,12 @@ export function ReaderPage() {
       <div
         className={`reader-body${mode === 'paged' ? ' paged' : ''}`}
         ref={bodyRef}
+        onClick={handleBodyClick}
       >
         {loading && !html ? (
           <div className="reader-loading">正在解析章节…</div>
         ) : mode === 'paged' ? (
-          <div className="reader-viewport" style={{ width: `${pageWidth}px` }}>
+          <div className="reader-viewport" style={{ width: `${screenWidth}px` }}>
             {pageContent}
           </div>
         ) : (
@@ -322,7 +451,12 @@ export function ReaderPage() {
         )}
       </div>
 
-      <div className="reader-foot">
+      <div
+        className="reader-foot"
+        onClick={(e) => {
+          if (!(e.target as HTMLElement).closest('button')) setPanel('none')
+        }}
+      >
         <button className="icon-btn sm" onClick={() => turn(-1)} title="上一页">
           <ChevronLeft size={17} />
         </button>
@@ -330,6 +464,9 @@ export function ReaderPage() {
         <div className="reader-progress">
           <i style={{ width: `${percentText(totalPercent)}%` }} />
         </div>
+        {mode === 'paged' ? (
+          <span className="reader-hint">点击两侧或滚动滚轮翻页</span>
+        ) : null}
         <button className="icon-btn sm" onClick={() => turn(1)} title="下一页">
           <ChevronRight size={17} />
         </button>
@@ -403,12 +540,12 @@ export function ReaderPage() {
             </div>
             <div className="panel-row">
               <div className="panel-row-title">
-                <span>页宽</span>
-                <span className="range-value">{pageWidth} px</span>
+                <span>版心宽度</span>
+                <span className="range-value">{readerSettings?.pageWidth ?? 720} px</span>
               </div>
               <Slider
-                value={pageWidth}
-                min={560}
+                value={readerSettings?.pageWidth ?? 720}
+                min={480}
                 max={920}
                 step={20}
                 onChange={(v) => void saveSettings({ reader: { ...readerSettings!, pageWidth: v } })}
@@ -417,10 +554,10 @@ export function ReaderPage() {
             <div className="panel-row">
               <div className="panel-row-title">
                 <span>页边距</span>
-                <span className="range-value">{readerSettings?.padding ?? 36} px</span>
+                <span className="range-value">{padding} px</span>
               </div>
               <Slider
-                value={readerSettings?.padding ?? 36}
+                value={padding}
                 min={12}
                 max={80}
                 step={4}
@@ -477,6 +614,11 @@ export function ReaderPage() {
                   { value: 'paged', label: '翻页' }
                 ]}
               />
+              <div className="setting-hint" style={{ marginTop: 8 }}>
+                {mode === 'paged'
+                  ? `当前 ${columns} 栏显示，点击页面左右两侧或滚动滚轮翻页`
+                  : '上下滚动阅读'}
+              </div>
             </div>
           </div>
         </div>

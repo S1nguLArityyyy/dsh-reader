@@ -5,7 +5,10 @@ export type BookFormat = 'epub'
 /** 书库中的一本书 */
 export interface Book {
   id: string
+  /** 展示用书名：以文件名为准，文件名不可读时回退到 EPUB 内部书名 */
   title: string
+  /** EPUB 元数据里的书名（dc:title），详情页里对照显示 */
+  metaTitle: string
   author: string
   format: BookFormat
   fileName: string
@@ -14,7 +17,15 @@ export interface Book {
   fileSize: number
   /** 封面文件绝对路径，解析失败时为 null */
   coverFile: string | null
+  /** 封面主色（#rrggbb），用于卡片渐变 */
+  coverColor: string | null
+  /** 书籍简介（来自 dc:description） */
+  description: string
   chapterCount: number
+  /** 每章可见字符数，用于按阅读位置计算进度 */
+  chapterChars: number[]
+  /** 全书字数（各章之和） */
+  wordCount: number
   /** 卷号，如 "9"；无卷号时为 null */
   volume: string | null
   /** 同系列归组键（去掉卷号后的书名） */
@@ -75,14 +86,28 @@ export interface SyncSettings {
   uploadBooks: boolean
 }
 
+export interface AppearanceSettings {
+  /** 主题色（#rrggbb） */
+  accent: string
+  /** 应用背景图绝对路径，为空表示用默认背景 */
+  backgroundImage: string | null
+  /** 阅读器背景图绝对路径 */
+  readerBackgroundImage: string | null
+  /** 背景图不透明度 0~1 */
+  backgroundOpacity: number
+}
+
 export interface Settings {
   dataDir: string
   deviceId: string
   deviceName: string
   theme: 'light' | 'dark'
   librarySort: 'recent' | 'added' | 'title'
+  /** 每日阅读目标（分钟），用于「今日阅读进度」 */
+  dailyGoalMinutes: number
   reader: ReaderSettings
   sync: SyncSettings
+  appearance: AppearanceSettings
 }
 
 export interface TocNode {

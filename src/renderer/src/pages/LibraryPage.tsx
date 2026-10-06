@@ -13,63 +13,20 @@ import {
 import type { Book } from '@shared/types'
 import { useApp } from '../store/app'
 import { BookCover } from '../components/BookCover'
-import { Dropdown, EmptyState } from '../components/ui'
-import { percentText, remainingText, gradientOf } from '../lib/format'
-import { ProgressRing } from '../components/ui'
-
-interface Group {
-  key: string
-  title: string
-  books: Book[]
-}
-
-function sortBooks(books: Book[], sort: 'recent' | 'added' | 'title'): Book[] {
-  const list = [...books]
-  if (sort === 'title') return list.sort((a, b) => a.title.localeCompare(b.title, 'zh-Hans-CN'))
-  if (sort === 'added') return list.sort((a, b) => b.addedAt - a.addedAt)
-  return list.sort((a, b) => (b.lastOpenedAt ?? b.addedAt) - (a.lastOpenedAt ?? a.addedAt))
-}
-
-/** 同系列（>=2 本）单独分组，其余归入「单册书籍」 */
-function groupBooks(books: Book[]): Group[] {
-  const counts = new Map<string, number>()
-  for (const book of books) {
-    if (book.seriesKey) counts.set(book.seriesKey, (counts.get(book.seriesKey) ?? 0) + 1)
-  }
-  const series = new Map<string, Book[]>()
-  const singles: Book[] = []
-  for (const book of books) {
-    const key = book.seriesKey
-    if (key && (counts.get(key) ?? 0) > 1) {
-      const list = series.get(key) ?? []
-      list.push(book)
-      series.set(key, list)
-    } else {
-      singles.push(book)
-    }
-  }
-  const groups: Group[] = [...series.entries()].map(([key, list]) => ({
-    key,
-    title: key,
-    // 系列内部始终按卷号升序，未标卷号的排在最后
-    books: [...list].sort((a, b) => {
-      const av = a.volume ? Number(a.volume) : Number.MAX_SAFE_INTEGER
-      const bv = b.volume ? Number(b.volume) : Number.MAX_SAFE_INTEGER
-      if (av !== bv) return av - bv
-      return a.title.localeCompare(b.title, 'zh-Hans-CN')
-    })
-  }))
-  if (singles.length > 0) groups.push({ key: '__singles__', title: '单册书籍', books: singles })
-  return groups
-}
+import { Dropdown, EmptyState, ProgressRing } from '../components/ui'
+import { coverFade, percentText, remainingText } from '../lib/format'
+import { groupBooks, sortBooks } from '../lib/library'
 
 export function LibraryPage() {
   const books = useApp((s) => s.books)
   const stats = useApp((s) => s.stats)
   const settings = useApp((s) => s.settings)
+  const seriesFilter = useApp((s) => s.seriesFilter)
+  const setSeriesFilter = useApp((s) => s.setSeriesFilter)
   const importDialog = useApp((s) => s.importDialog)
   const importFolderDialog = useApp((s) => s.importFolderDialog)
   const openReader = useApp((s) => s.openReader)
+  const openDetail = useApp((s) => s.openDetail)
   const removeBook = useApp((s) => s.removeBook)
   const updateBook = useApp((s) => s.updateBook)
   const saveSettings = useApp((s) => s.saveSettings)
@@ -81,7 +38,11 @@ export function LibraryPage() {
   )
 
   const sorted = useMemo(() => sortBooks(books, settings?.librarySort ?? 'recent'), [books, settings])
-  const groups = useMemo(() => groupBooks(sorted), [sorted])
+  const allGroups = useMemo(() => groupBooks(sorted), [sorted])
+  const groups = useMemo(
+    () => (seriesFilter ? allGroups.filter((g) => g.key === seriesFilter) : allGroups),
+    [allGroups, seriesFilter]
+  )
 
   const continueBook = useMemo(() => {
     if (sorted.length === 0) return null
@@ -96,10 +57,12 @@ export function LibraryPage() {
     return inProgress ?? sorted[0]
   }, [sorted, stats, percentMap])
 
-  const percent = continueBook ? (percentMap.get(continueBook.id) ?? 0) : 0
+  const goalMinutes = settings?.dailyGoalMinutes ?? 30
   const todaySeconds = stats?.todaySeconds ?? 0
-  const todayMinutes = Math.round(todaySeconds / 60)
+  const todayMinutes = Math.floor(todaySeconds / 60)
+  const goalPercent = goalMinutes > 0 ? Math.min(1, todayMinutes / goalMinutes) : 0
   const remaining = stats?.todayRemainingSeconds ?? null
+  const bookPercent = continueBook ? (percentMap.get(continueBook.id) ?? 0) : 0
 
   const confirmDelete = async (book: Book, deleteFile: boolean): Promise<void> => {
     const ok = await window.api.dialog.confirm({
@@ -115,8 +78,13 @@ export function LibraryPage() {
   return (
     <div className="page">
       <div className="page-head">
-        <h1 className="page-title">本地书库</h1>
+        <h1 className="page-title">{seriesFilter ? allGroups.find((g) => g.key === seriesFilter)?.title ?? '本地书库' : '本地书库'}</h1>
         <div className="head-actions">
+          {seriesFilter ? (
+            <button className="btn btn-ghost btn-sm" onClick={() => setSeriesFilter(null)}>
+              显示全部
+            </button>
+          ) : null}
           <button className="icon-btn" title="导入 EPUB 文件" onClick={() => void importDialog()}>
             <Upload size={20} />
           </button>
@@ -198,51 +166,51 @@ export function LibraryPage() {
         />
       ) : (
         <>
-          <div className="lib-top">
-            <div className="card today-card">
-              <div className="today-left">
-                <div className="today-title">今日阅读进度</div>
-                <div className="today-sub">
-                  {remaining === null ? '再读一会儿即可估算剩余时间' : `剩余时间：${remainingText(remaining)}`}
-                </div>
-                <button
-                  className="btn btn-primary today-btn"
-                  disabled={!continueBook}
-                  onClick={() => continueBook && void openReader(continueBook.id)}
-                >
-                  <Play size={14} fill="currentColor" />
-                  继续阅读
-                </button>
+          {!seriesFilter ? (
+            <div
+              className="card today-card"
+              style={{ background: coverFade(continueBook?.coverColor ?? null, continueBook?.id ?? 'empty') }}
+            >
+              <div className="today-cover">
+                {continueBook ? <BookCover book={continueBook} /> : null}
               </div>
-              <ProgressRing percent={percent} size={132} stroke={11}>
-                <div className="ring-value">{percentText(percent)}%</div>
-                <div className="ring-sub">{todayMinutes > 0 ? `${todayMinutes}分钟` : '今日未读'}</div>
-              </ProgressRing>
-            </div>
 
-            {continueBook ? (
-              <div
-                className="continue-card"
-                style={{ background: gradientOf(continueBook.id, true) }}
-                onClick={() => void openReader(continueBook.id)}
-              >
-                <div className="continue-cover">
-                  <BookCover book={continueBook} />
+              <div className="today-info">
+                <div className="today-label">今日阅读</div>
+                <div className="today-book" title={continueBook?.title}>
+                  {continueBook?.title ?? '还没有书籍'}
                 </div>
-                <div className="continue-body">
-                  <div className="continue-title">{continueBook.title}</div>
-                  <div className="continue-author">{continueBook.author}</div>
-                  <div className="continue-foot">
-                    <span>已读完 {percentText(percent)} %</span>
-                    <span className="continue-link">
-                      继续阅读
-                      <ArrowRight size={14} />
-                    </span>
-                  </div>
+                <div className="today-author">
+                  {continueBook?.author ?? '导入一本 EPUB 开始阅读'}
+                </div>
+                <div className="today-actions">
+                  <button
+                    className="btn today-btn"
+                    disabled={!continueBook}
+                    onClick={() => continueBook && void openReader(continueBook.id)}
+                  >
+                    <Play size={14} fill="currentColor" />
+                    继续阅读
+                  </button>
+                  <span className="today-remaining">
+                    {remaining === null ? '再读一会儿即可估算剩余时间' : `剩余 ${remainingText(remaining)}`}
+                  </span>
                 </div>
               </div>
-            ) : null}
-          </div>
+
+              <div className="today-goal">
+                <ProgressRing percent={goalPercent} size={124} stroke={11}>
+                  <div className="ring-value">{percentText(goalPercent)}%</div>
+                  <div className="ring-sub">
+                    今日 {todayMinutes}/{goalMinutes} 分钟
+                  </div>
+                </ProgressRing>
+                <div className="today-goal-sub">
+                  本书已读 {percentText(bookPercent)}%
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {groups.map((group) => (
             <section className="lib-section" key={group.key}>
@@ -254,15 +222,15 @@ export function LibraryPage() {
               </div>
               <div className="book-grid">
                 {group.books.map((book) => {
-                  const bookPercent = percentMap.get(book.id) ?? 0
+                  const bookPct = percentMap.get(book.id) ?? 0
                   return (
                     <div className="book-item" key={book.id}>
-                      <div className="book-cover" onClick={() => void openReader(book.id)}>
+                      <div className="book-cover" onClick={() => openDetail(book.id)}>
                         <BookCover book={book} />
                         {book.volume ? <span className="book-badge">{book.volume}</span> : null}
-                        {bookPercent > 0.001 ? (
+                        {bookPct > 0.001 ? (
                           <div className="book-progress">
-                            <i style={{ width: `${percentText(bookPercent)}%` }} />
+                            <i style={{ width: `${percentText(bookPct)}%` }} />
                           </div>
                         ) : null}
                         <div className="book-overlay">
@@ -283,6 +251,15 @@ export function LibraryPage() {
                         >
                           {(close) => (
                             <>
+                              <button
+                                onClick={() => {
+                                  close()
+                                  openDetail(book.id)
+                                }}
+                              >
+                                <BookPlus size={14} />
+                                查看详情
+                              </button>
                               <button
                                 onClick={() => {
                                   close()
@@ -350,6 +327,10 @@ export function LibraryPage() {
               </div>
             </section>
           ))}
+
+          {groups.length === 0 ? (
+            <EmptyState icon={<BookPlus size={26} />} title="这个系列里没有书籍" />
+          ) : null}
         </>
       )}
     </div>

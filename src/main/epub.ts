@@ -45,6 +45,7 @@ function stripTags(html: string): string {
 export interface EpubMeta {
   title: string
   author: string
+  description: string
   coverData: Uint8Array | null
   coverExt: string | null
   /** 相对 OPF 目录的章节路径（posix 分隔符），按 spine 顺序 */
@@ -76,6 +77,7 @@ export async function readEpubMeta(filePath: string): Promise<EpubMeta> {
 
   const title = text(metadata.title).trim()
   const author = text(metadata.creator).trim()
+  const description = cleanDescription(text(metadata.description))
   const opfDir = posix.dirname(opfPath) === '.' ? '' : posix.dirname(opfPath)
 
   const items = arr(pkg.manifest?.item).map((it: any) => ({
@@ -156,7 +158,17 @@ export async function readEpubMeta(filePath: string): Promise<EpubMeta> {
     }
   }
 
-  return { title, author, coverData, coverExt, chapterHrefs, opfPath, opfDir, toc }
+  return { title, author, description, coverData, coverExt, chapterHrefs, opfPath, opfDir, toc }
+}
+
+/** 简介里常带 HTML 标签与多余空白，统一清理成纯文本 */
+function cleanDescription(raw: string): string {
+  if (!raw) return ''
+  return stripTags(raw.replace(/<br\s*\/?>/gi, '\n'))
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/\n{2,}/g, '\n')
+    .trim()
+    .slice(0, 2000)
 }
 
 /** 解析 EPUB3 nav.xhtml 目录（正则实现，对非严格 XHTML 更宽容） */

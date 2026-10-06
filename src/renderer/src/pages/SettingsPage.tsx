@@ -7,7 +7,10 @@ import {
   FileUp,
   FolderOpen,
   HardDrive,
+  Image as ImageIcon,
   Info,
+  Palette,
+  Plus,
   RefreshCw,
   Type
 } from 'lucide-react'
@@ -15,6 +18,8 @@ import type { ReaderTheme } from '@shared/types'
 import { useApp } from '../store/app'
 import { SegmentedControl, Slider, Switch } from '../components/ui'
 import { FONT_STACKS, READER_THEMES, type FontKey } from '../lib/reader-theme'
+
+const ACCENT_PRESETS = ['#3b6fd4', '#2fa36b', '#d97757', '#8b5cf6', '#e0a028', '#e05b7a', '#0ea5a5']
 
 export function SettingsPage() {
   const settings = useApp((s) => s.settings)
@@ -32,6 +37,7 @@ export function SettingsPage() {
 
   const reader = settings.reader
   const syncSettings = settings.sync
+  const appearance = settings.appearance
   const theme = READER_THEMES[reader.theme]
 
   const patchReader = (patch: Partial<typeof reader>): void => {
@@ -40,6 +46,15 @@ export function SettingsPage() {
 
   const patchSync = (patch: Partial<typeof syncSettings>): void => {
     void saveSettings({ sync: { ...syncSettings, ...patch } })
+  }
+
+  const patchAppearance = (patch: Partial<typeof appearance>): void => {
+    void saveSettings({ appearance: { ...appearance, ...patch } })
+  }
+
+  const pickImage = async (field: 'backgroundImage' | 'readerBackgroundImage'): Promise<void> => {
+    const file = await window.api.dialog.chooseImage()
+    if (file) patchAppearance({ [field]: file } as Partial<typeof appearance>)
   }
 
   return (
@@ -178,6 +193,23 @@ export function SettingsPage() {
             </div>
           </div>
 
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">每日阅读目标</div>
+              <div className="setting-desc">「今日阅读」环形进度按它计算，用来养成阅读习惯</div>
+            </div>
+            <div className="setting-control">
+              <Slider
+                value={settings.dailyGoalMinutes}
+                min={10}
+                max={180}
+                step={5}
+                onChange={(v) => void saveSettings({ dailyGoalMinutes: v })}
+              />
+              <span className="range-value">{settings.dailyGoalMinutes} 分钟</span>
+            </div>
+          </div>
+
           <div
             className="preview-box"
             style={{
@@ -190,6 +222,105 @@ export function SettingsPage() {
           >
             <p>十月的风从窗缝里钻进来，翻动了桌上的书页。他把书按住，就着午后那点发白的光，又读了一页。</p>
             <p>“所谓阅读，不过是把别人的时间借来，安放在自己的生命里。”</p>
+          </div>
+        </section>
+
+        {/* ---------- 外观 ---------- */}
+        <section className="setting-card">
+          <h3>
+            <Palette size={15} style={{ verticalAlign: -2, marginRight: 6 }} />
+            外观
+          </h3>
+          <div className="setting-hint">主题色会应用到按钮、进度环、选中状态；背景图会铺在主界面后面。</div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">主题色</div>
+              <div className="setting-desc">点击色块选择，或用取色器自定义</div>
+            </div>
+            <div className="setting-control">
+              <div className="accent-swatches">
+                {ACCENT_PRESETS.map((color) => (
+                  <button
+                    key={color}
+                    className={`accent-swatch${appearance.accent.toLowerCase() === color.toLowerCase() ? ' active' : ''}`}
+                    style={{ background: color }}
+                    title={color}
+                    onClick={() => patchAppearance({ accent: color })}
+                  />
+                ))}
+                <label className="accent-swatch accent-custom" title="自定义颜色">
+                  <input
+                    type="color"
+                    value={appearance.accent}
+                    onChange={(e) => patchAppearance({ accent: e.target.value })}
+                  />
+                  <Plus size={13} />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">应用背景图</div>
+              <div className="setting-desc">
+                {appearance.backgroundImage ? appearance.backgroundImage : '未设置，使用纯色背景'}
+              </div>
+            </div>
+            <div className="setting-control">
+              <button className="btn btn-ghost btn-sm" onClick={() => void pickImage('backgroundImage')}>
+                <ImageIcon size={14} />
+                选择图片
+              </button>
+              {appearance.backgroundImage ? (
+                <button className="btn btn-ghost btn-sm" onClick={() => patchAppearance({ backgroundImage: null })}>
+                  清除
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {appearance.backgroundImage ? (
+            <div className="setting-row">
+              <div>
+                <div className="setting-label">背景浓度</div>
+                <div className="setting-desc">背景图的显示强度</div>
+              </div>
+              <div className="setting-control">
+                <Slider
+                  value={appearance.backgroundOpacity}
+                  min={0.05}
+                  max={0.9}
+                  step={0.05}
+                  onChange={(v) => patchAppearance({ backgroundOpacity: v })}
+                />
+                <span className="range-value">{Math.round(appearance.backgroundOpacity * 100)}%</span>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">阅读器背景图</div>
+              <div className="setting-desc">
+                {appearance.readerBackgroundImage ? appearance.readerBackgroundImage : '未设置，使用阅读主题的底色'}
+              </div>
+            </div>
+            <div className="setting-control">
+              <button className="btn btn-ghost btn-sm" onClick={() => void pickImage('readerBackgroundImage')}>
+                <ImageIcon size={14} />
+                选择图片
+              </button>
+              {appearance.readerBackgroundImage ? (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => patchAppearance({ readerBackgroundImage: null })}
+                >
+                  清除
+                </button>
+              ) : null}
+            </div>
           </div>
         </section>
 

@@ -4,7 +4,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
 import type { Book, Progress, SessionRow, Settings } from '../shared/types'
-import { splitVolume } from './naming'
+import { splitVolume, titleFromFileName } from './naming'
 
 /** 本地日期键 YYYY-MM-DD */
 export function todayKey(d = new Date()): string {
@@ -57,6 +57,7 @@ export class Store {
       deviceName: hostname() || 'Windows PC',
       theme: 'light',
       librarySort: 'recent',
+      dailyGoalMinutes: 30,
       reader: {
         fontSize: 18,
         lineHeight: 1.9,
@@ -72,6 +73,12 @@ export class Store {
         remoteDir: '/DshReader',
         conflictPolicy: 'ask',
         uploadBooks: false
+      },
+      appearance: {
+        accent: '#3b6fd4',
+        backgroundImage: null,
+        readerBackgroundImage: null,
+        backgroundOpacity: 0.18
       }
     }
   }
@@ -89,18 +96,47 @@ export class Store {
       ...saved,
       dataDir: this.dataDir,
       reader: { ...defaults.reader, ...(saved.reader ?? {}) },
-      sync: { ...defaults.sync, ...(saved.sync ?? {}) }
+      sync: { ...defaults.sync, ...(saved.sync ?? {}) },
+      appearance: { ...defaults.appearance, ...(saved.appearance ?? {}) }
     }
     this.books = await this.readJson<Book[]>('library', [])
     this.progress = await this.readJson<Record<string, Progress>>('progress', {})
     this.sessions = await this.readJson<SessionRow[]>('sessions', [])
 
-    // 卷号 / 系列归组由书名推导，启动时按当前规则重算，
-    // 这样解析规则改进后，已导入的书也会自动重新分组，无需重新导入。
+    // 1) 兼容旧版本数据：补齐后来新增的字段，避免读取时 undefined
+    // 2) 书名 / 卷号 / 系列归组按当前规则从文件名重算，
+    //    这样解析规则改进后，已导入的书也会自动更新，无需重新导入。
     let regrouped = false
     for (const book of this.books) {
-      const { volume, seriesKey } = splitVolume(book.title)
-      if (book.volume !== volume || book.seriesKey !== seriesKey) {
+      if (!Array.isArray(book.chapterChars)) {
+        book.chapterChars = []
+        regrouped = true
+      }
+      if (typeof book.wordCount !== 'number') {
+        book.wordCount = 0
+        regrouped = true
+      }
+      if (typeof book.description !== 'string') {
+        book.description = ''
+        regrouped = true
+      }
+      if (book.coverColor === undefined) {
+        book.coverColor = null
+        regrouped = true
+      }
+      if (typeof book.chapterCount !== 'number') {
+        book.chapterCount = book.chapterChars.length
+        regrouped = true
+      }
+      if (typeof book.metaTitle !== 'string') {
+        book.metaTitle = book.title ?? ''
+        regrouped = true
+      }
+
+      const title = titleFromFileName(book.fileName ?? '', book.metaTitle)
+      const { volume, seriesKey } = splitVolume(title)
+      if (book.title !== title || book.volume !== volume || book.seriesKey !== seriesKey) {
+        book.title = title
         book.volume = volume
         book.seriesKey = seriesKey
         regrouped = true
@@ -173,8 +209,7 @@ export class Store {
     }
   }
 
-  /** 累加阅读时长到「书 + 天」聚合行 */
-  addReadingTime(bookId: string, seconds: number): void {
+  /** 累加阅读时长到「书 + 天」聚合行 */  addReadingTime(bookId: string, seconds: number): void {
     if (!bookId || seconds <= 0) return
     const day = todayKey()
     const now = Date.now()

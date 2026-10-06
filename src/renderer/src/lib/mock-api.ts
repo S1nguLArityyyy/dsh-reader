@@ -26,13 +26,18 @@ const BOOKS: Book[] = [
   {
     id: 'demo-1',
     title: '星海拾遗 01',
+    metaTitle: '星海拾遗 第一卷',
     author: '林晚',
+    description: '潮汐线以西的观测站已经停摆了十七年。当第一封无人回信被捞起时，所有人都以为那只是洋流的玩笑。',
     format: 'epub',
     fileName: '星海拾遗 01.epub',
     filePath: 'D:/demo/星海拾遗 01.epub',
     fileSize: 3_540_000,
     coverFile: null,
+    coverColor: '#3f6d8e',
     chapterCount: 4,
+    chapterChars: [8200, 9100, 8700, 9400],
+    wordCount: 35400,
     volume: '1',
     seriesKey: '星海拾遗',
     addedAt: now - 12 * DAY,
@@ -43,13 +48,18 @@ const BOOKS: Book[] = [
   {
     id: 'demo-2',
     title: '星海拾遗 02',
+    metaTitle: '星海拾遗 第二卷',
     author: '林晚',
+    description: '双星之间的静默带里，旧地图最后一次被展开。远处是远日点，也是他们最初出发的地方。',
     format: 'epub',
     fileName: '星海拾遗 02.epub',
     filePath: 'D:/demo/星海拾遗 02.epub',
     fileSize: 3_620_000,
     coverFile: null,
+    coverColor: '#6b4a7a',
     chapterCount: 4,
+    chapterChars: [8800, 9200, 8600, 9800],
+    wordCount: 36400,
     volume: '2',
     seriesKey: '星海拾遗',
     addedAt: now - 9 * DAY,
@@ -60,13 +70,18 @@ const BOOKS: Book[] = [
   {
     id: 'demo-3',
     title: '十月书简',
+    metaTitle: '十月书简',
     author: '沈迟',
+    description: '四封没有寄出的信，从立秋写到霜降。写的人知道收信人不会读到，所以写得格外诚实。',
     format: 'epub',
     fileName: '十月书简.epub',
     filePath: 'D:/demo/十月书简.epub',
     fileSize: 1_980_000,
     coverFile: null,
+    coverColor: '#8a5a3c',
     chapterCount: 5,
+    chapterChars: [4200, 4600, 3900, 5100, 2600],
+    wordCount: 20400,
     volume: null,
     seriesKey: null,
     addedAt: now - 5 * DAY,
@@ -186,6 +201,7 @@ const settings: Settings = {
   deviceName: 'DESKTOP-PC',
   theme: previewDark ? 'dark' : 'light',
   librarySort: 'recent',
+  dailyGoalMinutes: 30,
   reader: {
     fontSize: 18,
     lineHeight: 1.9,
@@ -201,6 +217,12 @@ const settings: Settings = {
     remoteDir: '/DshReader',
     conflictPolicy: 'ask',
     uploadBooks: false
+  },
+  appearance: {
+    accent: '#3b6fd4',
+    backgroundImage: null,
+    readerBackgroundImage: null,
+    backgroundOpacity: 0.18
   }
 }
 
@@ -258,6 +280,7 @@ export function createMockApi(): unknown {
     },
     dialog: {
       chooseFolder: async () => null,
+      chooseImage: async () => null,
       confirm: async () => window.confirm('浏览器预览模式：确认执行该操作？')
     },
     library: {
@@ -267,7 +290,8 @@ export function createMockApi(): unknown {
       importPaths: noop,
       remove: noop,
       update: noop,
-      reveal: async () => true
+      reveal: async () => true,
+      onChanged: () => () => undefined
     },
     reader: {
       open: async (bookId: string): Promise<BookOpenPayload> => {

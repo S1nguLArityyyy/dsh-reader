@@ -31,7 +31,8 @@ function applySettingsPatch(store: Store, patch: Partial<Settings>): void {
     ...store.settings,
     ...patch,
     reader: { ...store.settings.reader, ...(patch.reader ?? {}) },
-    sync: { ...store.settings.sync, ...(patch.sync ?? {}) }
+    sync: { ...store.settings.sync, ...(patch.sync ?? {}) },
+    appearance: { ...store.settings.appearance, ...(patch.appearance ?? {}) }
   }
   next.dataDir = store.dataDir
   store.settings = next
@@ -87,9 +88,17 @@ export function registerIpc(store: Store, sync: SyncService): void {
     return result.canceled ? null : result.filePaths[0]
   })
 
+  handle('dialog:chooseImage', async () => {
+    const result = await dialog.showOpenDialog({
+      title: '选择背景图片',
+      properties: ['openFile'],
+      filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'] }]
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
   handle(
-    'dialog:confirm',
-    async (options: {
+    'dialog:confirm',    async (options: {
       title: string
       message: string
       detail?: string

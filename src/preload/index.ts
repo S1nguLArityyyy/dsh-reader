@@ -32,6 +32,7 @@ const api = {
   },
   dialog: {
     chooseFolder: () => invoke<string | null>('dialog:chooseFolder'),
+    chooseImage: () => invoke<string | null>('dialog:chooseImage'),
     confirm: (options: {
       title: string
       message: string
@@ -47,7 +48,15 @@ const api = {
     importPaths: (paths: string[]) => invoke<ImportResult>('library:importPaths', paths),
     remove: (id: string, deleteFile: boolean) => invoke<Book[]>('library:remove', id, deleteFile),
     update: (id: string, patch: Partial<Book>) => invoke<Book[]>('library:update', id, patch),
-    reveal: (id: string) => invoke<boolean>('library:reveal', id)
+    reveal: (id: string) => invoke<boolean>('library:reveal', id),
+    /** 后台补齐书籍信息后主进程会通知刷新 */
+    onChanged: (callback: () => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on('library:changed', listener)
+      return () => {
+        ipcRenderer.removeListener('library:changed', listener)
+      }
+    }
   },
   reader: {
     open: (bookId: string) => invoke<BookOpenPayload>('reader:open', bookId),

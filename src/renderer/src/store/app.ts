@@ -97,6 +97,25 @@ function pickStartChapter(payload: { toc: { label: string; chapterIndex: number 
   return firstContent?.chapterIndex ?? payload.toc[0]?.chapterIndex ?? 0
 }
 
+/**
+ * 按「读到的位置」计算全书进度：
+ * 已读完章节的字数 + 当前章节字数 × 章内位置，再除以全书字数。
+ * 没有字数数据时退回按章节序号估算。
+ */
+export function bookPercent(book: Book | null, chapterIndex: number, scrollRatio: number): number {
+  if (!book) return 0
+  const chars = book.chapterChars ?? []
+  const total = book.wordCount > 0 ? book.wordCount : chars.reduce((sum, n) => sum + n, 0)
+  if (chars.length === 0 || total <= 0) {
+    const count = Math.max(1, book.chapterCount || 1)
+    return Math.min(1, Math.max(0, (chapterIndex + scrollRatio) / count))
+  }
+  let before = 0
+  for (let i = 0; i < chapterIndex && i < chars.length; i += 1) before += chars[i]
+  const current = chars[Math.min(chapterIndex, chars.length - 1)] ?? 0
+  return Math.min(1, Math.max(0, (before + current * scrollRatio) / total))
+}
+
 interface AppStore {
   ready: boolean
   route: Route
@@ -111,11 +130,21 @@ interface AppStore {
   conflictModalOpen: boolean
   toasts: ToastItem[]
   reader: ReaderState
+  /** 书籍详情弹窗 */
+  detailBookId: string | null
+  /** 书库筛选：null=全部，'__singles__'=单册，其它=系列名 */
+  seriesFilter: string | null
+  /** 侧边栏系列二级菜单是否展开 */
+  seriesOpen: boolean
 
   init: () => Promise<void>
   go: (route: Route) => void
   toast: (kind: ToastItem['kind'], text: string) => void
   dismissToast: (id: number) => void
+  openDetail: (bookId: string) => void
+  closeDetail: () => void
+  setSeriesFilter: (key: string | null) => void
+  toggleSeries: () => void
 
   loadBooks: () => Promise<void>
   loadStats: () => Promise<void>
@@ -159,6 +188,9 @@ export const useApp = create<AppStore>((set, get) => ({
   conflictModalOpen: false,
   toasts: [],
   reader: { ...emptyReader },
+  detailBookId: null,
+  seriesFilter: null,
+  seriesOpen: true,
 
   async init() {
     try {
@@ -187,6 +219,14 @@ export const useApp = create<AppStore>((set, get) => ({
 
       if (modal === 'sync') set({ syncModalOpen: true })
       if (modal === 'conflict') get().previewConflicts()
+      if (modal === 'detail' && books.length > 0) set({ detailBookId: books[0].id })
+
+      // 主进程补齐旧书信息后会通知刷新
+      if (typeof window.api.library.onChanged === 'function') {
+        window.api.library.onChanged(() => {
+          void get().loadBooks()
+        })
+      }
 
       if (routeParam === 'reader' && books.length > 0) {
         const target = bookParam && bookParam !== 'first' ? bookParam : books[0].id
@@ -211,6 +251,22 @@ export const useApp = create<AppStore>((set, get) => ({
 
   dismissToast(id) {
     set({ toasts: get().toasts.filter((t) => t.id !== id) })
+  },
+
+  openDetail(bookId) {
+    set({ detailBookId: bookId })
+  },
+
+  closeDetail() {
+    set({ detailBookId: null })
+  },
+
+  setSeriesFilter(key) {
+    set({ seriesFilter: key, route: 'library' })
+  },
+
+  toggleSeries() {
+    set({ seriesOpen: !get().seriesOpen })
   },
 
   async loadBooks() {

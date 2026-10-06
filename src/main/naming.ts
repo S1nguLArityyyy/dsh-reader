@@ -120,3 +120,18 @@ export function splitVolume(rawTitle: string): VolumeInfo {
 }
 
 export { stripNoise }
+
+/**
+ * 展示用书名以**文件名**为准（用户明确要求）：
+ * EPUB 内部的 dc:title 常常所有卷都写成同一个名字，导致分类时无法区分卷号。
+ * 文件名不像书名时（UUID、纯数字、太短）回退到内部书名。
+ */
+export function titleFromFileName(fileName: string, metaTitle: string): string {
+  const stem = (fileName ?? '').replace(/\.[^.\\/]+$/, '').trim()
+  const fallback = (metaTitle ?? '').trim()
+  if (!stem) return fallback
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(stem)) return fallback || stem
+  if (/^\d+$/.test(stem)) return fallback || stem
+  if (stem.length < 2) return fallback || stem
+  return stem
+}

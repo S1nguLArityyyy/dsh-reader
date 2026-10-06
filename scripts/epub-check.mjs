@@ -20,6 +20,8 @@ await build({
   platform: 'node',
   format: 'esm',
   outfile: outFile,
+  // 解析链路会间接引入 electron（封面取色用 nativeImage），用桩替换
+  alias: { electron: join(root, 'scripts', 'electron-stub.ts') },
   logLevel: 'warning'
 })
 

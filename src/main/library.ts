@@ -5,7 +5,8 @@ import { existsSync } from 'node:fs'
 import type { Book, TocEntry } from '../shared/types'
 import type { Store } from './store'
 import { extractEpub, readEpubMeta, type EpubMeta } from './epub'
-import { splitVolume } from './naming'
+import { splitVolume, titleFromFileName } from './naming'
+import { countChapterChars, coverColorOf } from './textstats'
 
 export { splitVolume }
 
@@ -33,7 +34,9 @@ export async function importEpubFile(store: Store, sourcePath: string): Promise<
   }
 
   const fallbackTitle = basename(sourcePath, extname(sourcePath))
-  const title = (meta.title || fallbackTitle).trim()
+  const metaTitle = (meta.title || '').trim()
+  // 书名以文件名为准，内部书名仅作回退
+  const title = titleFromFileName(fallbackTitle, metaTitle)
   const author = (meta.author || '未知作者').trim()
   const { volume, seriesKey } = splitVolume(title)
 
@@ -46,13 +49,18 @@ export async function importEpubFile(store: Store, sourcePath: string): Promise<
   const book: Book = {
     id,
     title,
+    metaTitle: metaTitle || title,
     author,
+    description: meta.description,
     format: 'epub',
     fileName: basename(sourcePath),
     filePath: destPath,
     fileSize: info.size,
     coverFile,
+    coverColor: coverColorOf(coverFile),
     chapterCount: meta.chapterHrefs.length,
+    chapterChars: [],
+    wordCount: 0,
     volume,
     seriesKey,
     addedAt: Date.now(),
@@ -60,9 +68,50 @@ export async function importEpubFile(store: Store, sourcePath: string): Promise<
     hidden: false,
     syncUpload: false
   }
+
+  // 导入时顺便解压并统计每章字数：既拿到全书进度所需的分母，也让首次打开更快
+  await enrichBook(store, book, meta)
+
   store.books.push(book)
   store.save('library')
   return book
+}
+
+/** 补齐封面主色、每章字数、总字数（导入时同步做，旧书由启动后的后台任务补） */
+export async function enrichBook(store: Store, book: Book, metaIn?: EpubMeta): Promise<boolean> {
+  let changed = false
+
+  if (!book.coverColor && book.coverFile) {
+    const color = coverColorOf(book.coverFile)
+    if (color) {
+      book.coverColor = color
+      changed = true
+    }
+  }
+
+  const needsText = book.chapterChars.length !== book.chapterCount || book.wordCount === 0
+  const needsDescription = !book.description
+  if (!needsText && !needsDescription) return changed
+
+  try {
+    const meta = metaIn ?? (await readEpubMeta(book.filePath))
+    if (needsDescription && meta.description) {
+      book.description = meta.description
+      changed = true
+    }
+    if (needsText) {
+      const cacheDir = await ensureExtracted(store, book)
+      const counts = await countChapterChars(cacheDir, meta.opfDir, meta.chapterHrefs)
+      book.chapterChars = counts
+      book.wordCount = counts.reduce((sum, n) => sum + n, 0)
+      book.chapterCount = meta.chapterHrefs.length
+      changed = true
+    }
+  } catch (err) {
+    console.error(`[library] 补齐《${book.title}》信息失败`, err)
+  }
+
+  return changed
 }
 
 export async function importMany(store: Store, paths: string[]): Promise<{ books: Book[]; errors: string[] }> {

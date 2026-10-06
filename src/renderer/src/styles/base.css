@@ -64,6 +64,25 @@ body {
   user-select: none;
 }
 
+/* 自定义背景图铺在最底层 */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: var(--app-bg-image, none);
+  background-size: cover;
+  background-position: center;
+  opacity: var(--app-bg-opacity, 0.18);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+}
+
 button,
 input,
 select,

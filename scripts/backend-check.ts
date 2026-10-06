@@ -48,6 +48,16 @@ const first = books[0]
 check('书库副本已落盘', existsSync(first.filePath))
 check('封面已落盘', Boolean(first.coverFile && existsSync(first.coverFile)), first.coverFile ?? '无')
 check('卷号/系列识别', first.volume !== undefined, `${first.title} → volume=${first.volume} series=${first.seriesKey}`)
+check(
+  '导入时统计了每章字数',
+  first.chapterChars.length === first.chapterCount && first.wordCount > 0,
+  `${first.chapterChars.length}/${first.chapterCount} 章，共 ${first.wordCount} 字`
+)
+check(
+  '各章字数之和等于总字数',
+  first.chapterChars.reduce((a, b) => a + b, 0) === first.wordCount,
+  `${first.wordCount}`
+)
 
 /* ---------- 2. 阅读：打开、逐章、进度、计时 ---------- */
 console.log('\n[2] 阅读链路')

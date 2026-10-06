@@ -23,7 +23,14 @@ export function durationParts(seconds: number): DurationPart[] {
 }
 
 export function durationText(seconds: number): string {
-  return durationParts(seconds)
+  const total = Math.max(0, Math.round(seconds))
+  // 超过一小时就不再显示秒，避免「3小时21分0秒」这种啰嗦写法
+  if (total >= 3600) {
+    const hours = Math.floor(total / 3600)
+    const minutes = Math.floor((total % 3600) / 60)
+    return minutes > 0 ? `${hours}小时${minutes}分` : `${hours}小时`
+  }
+  return durationParts(total)
     .map((p) => `${p.value}${p.unit}`)
     .join('')
 }
@@ -91,4 +98,91 @@ export function gradientOf(seed: string, dark = false): string {
     return `linear-gradient(135deg, hsl(${hue} 30% 25%), hsl(${(hue + 24) % 360} 34% 14%))`
   }
   return `linear-gradient(155deg, hsl(${hue} 32% 46%), hsl(${(hue + 22) % 360} 36% 28%))`
+}
+
+/* ---------------- 字数与颜色 ---------------- */
+
+/** 96000 → 9.6 万字 */
+export function formatWordCount(count: number): string {
+  if (!count || count <= 0) return '—'
+  if (count < 10000) return `${count} 字`
+  const wan = count / 10000
+  return `${wan >= 100 ? Math.round(wan) : Number(wan.toFixed(1))} 万字`
+}
+
+export interface Hsl {
+  h: number
+  s: number
+  l: number
+}
+
+export function hexToHsl(hex: string): Hsl {
+  const clean = hex.replace('#', '')
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean
+  const r = parseInt(full.slice(0, 2), 16) / 255
+  const g = parseInt(full.slice(2, 4), 16) / 255
+  const b = parseInt(full.slice(4, 6), 16) / 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  const d = max - min
+  if (d === 0) return { h: 0, s: 0, l: l * 100 }
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+  let h: number
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6
+  else if (max === g) h = ((b - r) / d + 2) / 6
+  else h = ((r - g) / d + 4) / 6
+  return { h: h * 360, s: s * 100, l: l * 100 }
+}
+
+export function hsl(h: number, s: number, l: number, alpha = 1): string {
+  const hue = ((h % 360) + 360) % 360
+  const sat = Math.max(0, Math.min(100, s))
+  const light = Math.max(0, Math.min(100, l))
+  return alpha >= 1 ? `hsl(${hue} ${sat}% ${light}%)` : `hsl(${hue} ${sat}% ${light}% / ${alpha})`
+}
+
+export interface AccentPalette {
+  primary: string
+  hover: string
+  soft: string
+  soft2: string
+  onPrimary: string
+}
+
+/** 由主题色推导出一组界面用色 */
+export function accentPalette(hex: string, dark: boolean): AccentPalette {
+  const { h, s, l } = hexToHsl(hex)
+  const sat = Math.max(12, Math.min(92, s))
+  const base = Math.max(28, Math.min(66, l))
+  return {
+    primary: hsl(h, sat, base),
+    hover: hsl(h, sat, Math.max(18, base - 8)),
+    soft: dark ? hsl(h, Math.min(60, sat), 16) : hsl(h, Math.min(90, sat + 6), 95),
+    soft2: dark ? hsl(h, Math.min(60, sat), 24) : hsl(h, Math.min(90, sat + 4), 88),
+    onPrimary: l > 62 ? hsl(h, sat, 12) : '#ffffff'
+  }
+}
+
+/** 把封面主色转成「左深右浅」的卡片渐变（右侧融进面板色，用于今日阅读卡） */
+export function coverFade(color: string | null, fallbackSeed: string): string {
+  const base = color ?? hsl(hueOf(fallbackSeed), 34, 42)
+  const { h, s, l } = hexToHsl(base)
+  return `linear-gradient(100deg, ${hsl(h, s, Math.max(18, l - 6))} 0%, ${hsl(h, s * 0.92, Math.max(20, l))} 42%, ${hsl(
+    h,
+    s * 0.72,
+    Math.max(22, l + 8),
+    0.78
+  )} 56%, var(--panel) 70%)`
+}
+
+/** 由封面主色生成一整块彩色渐变（详情弹窗头部，白字始终可读） */
+export function coverHero(color: string | null, fallbackSeed: string): string {
+  const base = color ?? hsl(hueOf(fallbackSeed), 34, 42)
+  const { h, s, l } = hexToHsl(base)
+  return `linear-gradient(100deg, ${hsl(h, s, Math.max(20, l - 9))} 0%, ${hsl(h, s, Math.max(24, l))} 54%, ${hsl(
+    h,
+    Math.min(100, s * 0.88),
+    Math.max(26, l + 7)
+  )} 100%)`
 }
