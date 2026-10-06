@@ -1,5 +1,10 @@
 # Dsh Reader
 
+本地 EPUB 阅读器（Windows 桌面应用，Electron + React）。
+
+> 📄 **开发纪要**（架构、算法、踩过的坑、搬家步骤）见 [docs/开发纪要.md](docs/开发纪要.md)
+> 📋 **v2 待办清单**（含优先级建议）见 [docs/v2-plan.md](docs/v2-plan.md)
+
 本地电子书阅读器（Windows 桌面端）。当前为**第一阶段：页面结构与交互设计**，书籍格式先支持 **EPUB**。
 
 ## 运行
