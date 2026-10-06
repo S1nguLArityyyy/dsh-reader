@@ -36,27 +36,29 @@ npm run build:web
 npm run preview:web   # 打开 http://127.0.0.1:5199
 ```
 
-## 打包成 exe
+## 打包
 
 ```bash
-npm run dist        # 安装版 + 免安装单文件版，产物在 release/
-npm run dist:dir    # 只出免安装目录版（release/win-unpacked），调试打包用
+npm run dist              # 免安装文件夹版（推荐）：release/DshReader-<版本>-portable/
+npm run dist:installer    # 安装版（NSIS）：release/DshReader-<版本>-setup.exe
 ```
 
-产物：
+**免安装文件夹版**（默认）产出一个自包含目录，双击其中的 `DshReader.exe` 即可运行：
 
-| 文件 | 说明 |
-|---|---|
-| `release/DshReader-0.1.0-setup.exe` | NSIS 安装版，可选安装目录、建桌面与开始菜单快捷方式 |
-| `release/DshReader-0.1.0-portable.exe` | 免安装单文件，双击即用，数据同样存在 `%APPDATA%\Dsh Reader` |
+```
+release/DshReader-0.1.0-portable/
+    DshReader.exe        ← 双击打开
+    使用说明.txt
+    books/               ← 书籍副本（导入时自动复制到这里）
+    resources/  locales/  *.dll ...
+```
 
-> **安装位置必须是纯 ASCII 路径**（默认的 `%LOCALAPPDATA%\Programs\Dsh Reader` 没问题）。
-> 若装到 `D:\桌面\...`、`D:\软件\...` 这类含中文的目录，会撞上前面说的 Electron 启动崩溃。
-> 免安装版会把自身解压到 `%TEMP%` 再运行，因此**放在任何位置（包括桌面）都能用**。
->
-> 两个版本共用同一份数据（`%APPDATA%\Dsh Reader`），装哪个、装几次都不会丢书。
->
-> 安装包未做代码签名，Windows SmartScreen 可能提示「未知发布者」，选「仍要运行」即可。
+- 整个文件夹压缩后就能发给别人，对方解压双击即可用，不需要安装、不需要任何运行环境
+- 数据（阅读进度、统计、设置）存在 `%APPDATA%\Dsh Reader`，所以分享出去的包是干净书库
+- 想彻底绿色化（连数据也放文件夹里）的话说一声，加个开关即可
+
+> 安装版会装到 `%LOCALAPPDATA%\Programs\Dsh Reader`；安装包未做代码签名，SmartScreen 可能提示「未知发布者」。
+> 实测打包后的应用放在**中文路径下也能正常启动**（开发模式才有非 ASCII 路径的限制，见上一节）。
 
 图标由 `scripts/make-icon.py` 生成（Pillow），产物为 `build/icon.ico` / `build/icon.png`。
 

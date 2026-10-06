@@ -24,9 +24,6 @@ win:
     - target: nsis
       arch:
         - x64
-    - target: portable
-      arch:
-        - x64
   icon: build/icon.ico
   executableName: DshReader
   legalTrademarks: Dsh Reader
@@ -40,9 +37,6 @@ nsis:
   shortcutName: Dsh Reader
   artifactName: DshReader-${version}-setup.${ext}
   uninstallDisplayName: Dsh Reader ${version}
-
-portable:
-  artifactName: DshReader-${version}-portable.${ext}
 
 # 关闭自动更新相关的发布配置（当前阶段不需要）
 publish: null
