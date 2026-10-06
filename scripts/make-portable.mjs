@@ -7,7 +7,7 @@
  *
  * 用法：node scripts/make-portable.mjs
  */
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -34,6 +34,11 @@ const readme = `Dsh Reader ${version} — 免安装版
 双击 DshReader.exe 打开。
 第一次打开会自动在本文件夹里建一个 books\\ 目录。
 
+【重要】
+请把这个文件夹放在开发项目目录之外再运行（例如 D:\\DshReader）。
+实测若直接从项目的 release 目录里双击，Electron 会启动失败。
+压缩发给别人不受影响 —— 对方解压到任意位置都能用。
+
 【文件放在哪】
 · 书籍       本文件夹的 books\\   —— 导入时会从原位置复制一份过来，原文件不动
 · 封面缓存   本文件夹（首次打开后自动生成）
@@ -57,4 +62,24 @@ writeFileSync(join(dest, '使用说明.txt'), readme, 'utf8')
 mkdirSync(join(dest, 'books'), { recursive: true })
 
 console.log(`[portable] 已生成：${dest}`)
-console.log('[portable] 双击其中的 DshReader.exe 即可运行；整个文件夹压缩后即可分享')
+
+/**
+ * 自动部署到项目目录之外。
+ * 实测：exe 位于本项目目录内时，Electron 主进程会在 app ready 之前崩溃（0xC0000003 / 0xC0000005），
+ * 放到项目外任意位置（含带空格、带中文的路径）都能正常启动。
+ */
+const deployDir = process.env.DSH_DEPLOY_DIR ?? join(`${root.slice(0, 3)}`, 'DshReader')
+const insideProject = resolve(deployDir).toLowerCase().startsWith(resolve(root).toLowerCase())
+
+if (insideProject) {
+  console.log(`[portable] 部署目录在项目内（${deployDir}），跳过自动部署`)
+} else {
+  try {
+    rmSync(deployDir, { recursive: true, force: true })
+    cpSync(dest, deployDir, { recursive: true })
+    console.log(`[portable] 已部署到：${deployDir}`)
+    console.log(`[portable] 双击 ${join(deployDir, 'DshReader.exe')} 即可运行`)
+  } catch (err) {
+    console.log(`[portable] 自动部署失败（不影响项目内产物）：${String(err)}`)
+  }
+}
