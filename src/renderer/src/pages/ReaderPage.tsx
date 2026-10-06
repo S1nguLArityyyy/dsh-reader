@@ -165,6 +165,24 @@ export function ReaderPage() {
     setRatio(0)
   }, [mode, columnWidth, columns, html, chapterIndex, readerSettings?.fontSize, readerSettings?.lineHeight, bodySize.width])
 
+  /* ---------- 换章时把滚动位置复位（否则新章会停在末尾，看起来像卡住） ---------- */
+  const lastChapter = useRef<number | null>(null)
+  // 换书时先作废标记，交给「恢复上次位置」处理
+  useEffect(() => {
+    lastChapter.current = null
+  }, [bookId])
+  useEffect(() => {
+    if (mode !== 'scroll' || !html) return
+    if (lastChapter.current === chapterIndex) return
+    const first = lastChapter.current === null
+    lastChapter.current = chapterIndex
+    if (first) return // 首次进入交给「恢复上次位置」处理
+    const el = bodyRef.current
+    if (el) el.scrollTop = 0
+    ratioRef.current = 0
+    setRatio(0)
+  }, [chapterIndex, mode, html])
+
   /* ---------- 恢复上次位置 ---------- */
   useEffect(() => {
     if (!bookId || !html) return
@@ -462,6 +480,24 @@ export function ReaderPage() {
         <span className="reader-bar-sub">
           {chapterIndex + 1}/{chapters.length} · {reader.chapterLabel}
         </span>
+        <div className="reader-chapter-switch">
+          <button
+            className="icon-btn sm"
+            title="上一章"
+            disabled={chapterIndex === 0}
+            onClick={() => void goToChapter(chapterIndex - 1)}
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <button
+            className="icon-btn sm"
+            title="下一章"
+            disabled={chapterIndex >= chapters.length - 1}
+            onClick={() => void goToChapter(chapterIndex + 1)}
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
         <div className="reader-spacer" />
         {mode === 'paged' ? (
           <span className="reader-bar-sub">

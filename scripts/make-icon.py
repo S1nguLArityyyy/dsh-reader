@@ -1,94 +1,79 @@
 """生成应用图标（build/icon.ico / build/icon.png）。
 
-用法：python scripts/make-icon.py
-依赖：Pillow
+用法：python scripts/make-icon.py [源图路径]
+默认从 assets/icon-source.png 读取，把白色背景做成透明后输出多尺寸 ico。
+
+依赖：Pillow、numpy
 """
 
 from __future__ import annotations
 
 import os
-from PIL import Image, ImageDraw
+import sys
+from collections import deque
+
+import numpy as np
+from PIL import Image
 
 SIZE = 1024
-BLUE_TOP = (86, 146, 238)
-BLUE_BOTTOM = (43, 92, 200)
+WHITE_THRESHOLD = 236
 
 
-def rounded_gradient(size: int) -> Image.Image:
-    """蓝色渐变圆角方块底"""
-    base = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    grad = Image.new("RGBA", (size, size))
-    px = grad.load()
-    for y in range(size):
-        t = y / (size - 1)
-        color = tuple(
-            int(BLUE_TOP[i] + (BLUE_BOTTOM[i] - BLUE_TOP[i]) * t) for i in range(3)
-        )
-        for x in range(size):
-            px[x, y] = (*color, 255)
+def strip_white_background(img: Image.Image) -> Image.Image:
+    """把与四边连通的白色区域变透明（角色内部的白色部分不受影响）"""
+    arr = np.array(img.convert("RGBA"))
+    h, w = arr.shape[:2]
+    rgb = arr[:, :, :3].astype(np.int16)
+    near_white = (rgb >= WHITE_THRESHOLD).all(axis=2)
 
-    mask = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        [0, 0, size - 1, size - 1], radius=int(size * 0.22), fill=255
-    )
-    base.paste(grad, (0, 0), mask)
-    return base
+    visited = np.zeros((h, w), dtype=bool)
+    queue: deque[tuple[int, int]] = deque()
 
+    def push(y: int, x: int) -> None:
+        if 0 <= y < h and 0 <= x < w and near_white[y, x] and not visited[y, x]:
+            visited[y, x] = True
+            queue.append((y, x))
 
-def draw_book(img: Image.Image, size: int) -> None:
-    """在中间画一本摊开的书"""
-    d = ImageDraw.Draw(img)
-    cx, cy = size / 2, size / 2
-    w = size * 0.50          # 整本书宽度
-    h = size * 0.36          # 书页高度
-    gap = size * 0.035       # 中缝
-    lean = size * 0.035      # 两侧上翘
+    for x in range(w):
+        push(0, x)
+        push(h - 1, x)
+    for y in range(h):
+        push(y, 0)
+        push(y, w - 1)
 
-    left = [
-        (cx - gap, cy - h / 2 + lean),
-        (cx - w / 2, cy - h / 2 - lean * 0.4),
-        (cx - w / 2, cy + h / 2 - lean * 0.4),
-        (cx - gap, cy + h / 2 + lean),
-    ]
-    right = [
-        (cx + gap, cy - h / 2 + lean),
-        (cx + w / 2, cy - h / 2 - lean * 0.4),
-        (cx + w / 2, cy + h / 2 - lean * 0.4),
-        (cx + gap, cy + h / 2 + lean),
-    ]
-    d.polygon(left, fill=(255, 255, 255, 255))
-    d.polygon(right, fill=(255, 255, 255, 255))
+    while queue:
+        y, x = queue.popleft()
+        push(y - 1, x)
+        push(y + 1, x)
+        push(y, x - 1)
+        push(y, x + 1)
 
-    # 书脊阴影，增加层次
-    spine_w = size * 0.012
-    d.rectangle(
-        [cx - spine_w, cy - h / 2 + lean, cx + spine_w, cy + h / 2 + lean],
-        fill=(214, 228, 250, 255),
-    )
+    arr[:, :, 3] = np.where(visited, 0, arr[:, :, 3])
 
-    # 文字线条
-    line_color = (150, 180, 225, 255)
-    for i in range(3):
-        y = cy - h * 0.18 + i * h * 0.22
-        d.line(
-            [(cx - w * 0.40, y + lean * 0.2), (cx - gap - size * 0.022, y)],
-            fill=line_color,
-            width=max(2, int(size * 0.016)),
-        )
-        d.line(
-            [(cx + gap + size * 0.022, y), (cx + w * 0.40, y + lean * 0.2)],
-            fill=line_color,
-            width=max(2, int(size * 0.016)),
-        )
+    # 让边缘的白色过渡像素半透明，缩放后不会留下白边
+    edge = np.zeros((h, w), dtype=bool)
+    edge[1:, :] |= visited[:-1, :]
+    edge[:-1, :] |= visited[1:, :]
+    edge[:, 1:] |= visited[:, :-1]
+    edge[:, :-1] |= visited[:, 1:]
+    fringe = edge & ~visited & (rgb.min(axis=2) >= 200)
+    arr[:, :, 3] = np.where(fringe, 120, arr[:, :, 3])
+
+    return Image.fromarray(arr, "RGBA")
 
 
 def main() -> None:
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    source = sys.argv[1] if len(sys.argv) > 1 else os.path.join(root, "assets", "icon-source.png")
     out_dir = os.path.join(root, "build")
     os.makedirs(out_dir, exist_ok=True)
 
-    img = rounded_gradient(SIZE)
-    draw_book(img, SIZE)
+    if not os.path.exists(source):
+        raise SystemExit(f"找不到源图：{source}")
+
+    img = Image.open(source).convert("RGBA")
+    img = img.resize((SIZE, SIZE), Image.LANCZOS)
+    img = strip_white_background(img)
 
     png_path = os.path.join(out_dir, "icon.png")
     img.save(png_path)

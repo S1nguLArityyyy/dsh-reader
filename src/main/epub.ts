@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser'
 import { strFromU8, unzipSync } from 'fflate'
+import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, extname, join, posix, relative, resolve, sep } from 'node:path'
 import type { TocNode } from '../shared/types'
@@ -55,7 +56,7 @@ export interface EpubMeta {
   toc: TocNode[]
 }
 
-const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'])
+const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.avif', '.tif', '.tiff'])
 
 /** 读取 EPUB 元数据、封面、spine 与目录（只解压需要的条目） */
 export async function readEpubMeta(filePath: string): Promise<EpubMeta> {
@@ -269,7 +270,6 @@ export async function readChapter(
   const opfAbs = opfDir ? join(cacheDir, opfDir.split('/').join(sep)) : cacheDir
   return { html: sanitizeChapter(raw, baseAbs, opfAbs, toUrl), title: extractTitle(raw) }
 }
-
 function extractTitle(html: string): string {
   const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
   return m ? stripTags(m[1]) : ''
@@ -289,16 +289,22 @@ export function sanitizeChapter(
   html = html.replace(/<(script|style|link|meta|title|base|iframe|object|embed|audio|video)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
   html = html.replace(/<\/?(script|style|link|meta|title|base|iframe|object|embed|audio|video|html|head|body)\b[^>]*>/gi, '')
   html = html.replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+  const resolveAsset = (abs: string): string | null => {
+    if (existsSync(abs)) return abs
+    // 有些 EPUB 的资源路径是相对 OPF 根目录写的（虽然不合规范但很常见），回退再试一次
+    const fallback = resolve(opfAbs, relative(baseAbs, abs))
+    return existsSync(fallback) ? fallback : null
+  }
   html = html.replace(
-    /\s(href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi,
+    /\s((?:xlink:)?href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi,
     (_m, attr: string, dq?: string, sq?: string) => {
       const value = dq ?? sq ?? ''
-      const next = rewriteUrl(attr.toLowerCase(), value, baseAbs, opfAbs, toUrl)
+      const next = rewriteUrl(attr.toLowerCase(), value, baseAbs, opfAbs, toUrl, resolveAsset)
       if (!next) return ''
       return ` ${attr}="${next.replace(/"/g, '&quot;')}"`
     }
   )
-  html = html.replace(/<img\b(?![^>]*\bloading=)/gi, '<img loading="lazy"')
+  // 不加 loading="lazy"：翻页分栏时后面的栏在视口外，懒加载的图片永远不会触发，表现为「图片显示失败」
   return html.trim()
 }
 
@@ -307,7 +313,8 @@ function rewriteUrl(
   value: string,
   baseAbs: string,
   opfAbs: string,
-  toUrl: (absPath: string) => string
+  toUrl: (absPath: string) => string,
+  resolveAsset: (abs: string) => string | null
 ): string {
   const raw = value.trim()
   if (!raw) return ''
@@ -329,9 +336,14 @@ function rewriteUrl(
   const abs = resolve(baseAbs, decoded.split('/').join(sep))
   const ext = extname(abs).toLowerCase()
 
-  if (attr === 'src') {
-    return IMAGE_EXT.has(ext) ? toUrl(abs) : ''
+  // src / xlink:href 一定是资源；href 若指向图片（SVG <image href>）也按资源处理
+  const isAssetAttr = attr === 'src' || attr === 'xlink:href'
+  if (isAssetAttr || IMAGE_EXT.has(ext)) {
+    const found = resolveAsset(abs)
+    if (found && IMAGE_EXT.has(extname(found).toLowerCase())) return toUrl(found)
+    if (isAssetAttr) return ''
   }
+
   // 文档内链：转成可被渲染进程识别的锚点
   const rel = relative(opfAbs, abs).split(sep).join('/')
   if (rel.startsWith('..')) return frag || ''

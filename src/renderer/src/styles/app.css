@@ -1476,6 +1476,26 @@
   flex: 1;
 }
 
+/* 顶栏换章按钮 */
+.reader-chapter-switch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.icon-btn:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.icon-btn:disabled:hover {
+  background: transparent;
+}
+
 .reader-body {
   flex: 1;
   overflow-y: auto;
