@@ -18,6 +18,40 @@ export function SyncStatusModal() {
   const done = sync.tasks.filter((t) => t.status === 'done').length
   const active = sync.tasks.find((t) => t.status === 'active')
   const busy = sync.phase === 'running' || sync.phase === 'checking'
+
+  // 让用户看得出"在跑还是卡住"：已用时 / 实时速度 / 30 秒无进展告警（只用 SyncState 已有字段 ✓）
+  const [nowTick, setNowTick] = useState(Date.now())
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [lastProgress, setLastProgress] = useState({ at: 0, bytes: 0 })
+  const [speed, setSpeed] = useState(0)
+
+  useEffect(() => {
+    if (!busy) {
+      setStartedAt(null)
+      setSpeed(0)
+      return
+    }
+    setStartedAt((v) => v ?? Date.now())
+    const timer = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [busy])
+
+  useEffect(() => {
+    const now = Date.now()
+    const bytes = sync.transferred
+    setLastProgress((prev) => {
+      if (prev.at > 0 && bytes > prev.bytes) {
+        const dt = (now - prev.at) / 1000
+        if (dt > 0.3) setSpeed((bytes - prev.bytes) / dt)
+      }
+      return { at: now, bytes }
+    })
+  }, [sync.transferred])
+
+  const elapsedSec = startedAt ? Math.max(0, Math.floor((nowTick - startedAt) / 1000)) : 0
+  const elapsedText = elapsedSec >= 60 ? `${Math.floor(elapsedSec / 60)} 分 ${elapsedSec % 60} 秒` : `${elapsedSec} 秒`
+  const stalled = busy && lastProgress.at > 0 && nowTick - lastProgress.at > 30000 && speed === 0
+  const recent = sync.tasks.slice(-6).reverse()
   const percent = total > 0 ? done / total : busy ? 0.05 : 0
 
   const label = active
@@ -51,6 +85,37 @@ export function SyncStatusModal() {
           {sync.message}
         </div>
       ) : null}
+
+        {busy || elapsedSec > 0 ? (
+          <div className="sync-line" style={{ marginTop: 12 }}>
+            <span>已用时：{elapsedText}</span>
+            <span className="sync-size">{speed > 0 ? `${fileSizeText(speed)}/s` : "—"}</span>
+          </div>
+        ) : null}
+
+        {stalled ? (
+          <div className="setting-hint" style={{ marginTop: 10, color: "#d9534f" }}>
+            ⚠ 已 30 秒没有字节增长 —— 可能卡住了，可以点「取消同步」后重试
+          </div>
+        ) : null}
+
+        {recent.length > 0 ? (
+          <div style={{ marginTop: 14 }}>
+            <div className="setting-label" style={{ marginBottom: 6 }}>最近任务</div>
+            {recent.map((task) => {
+              const mark =
+                task.status === "done" ? "✓" : task.status === "error" ? "✗" : task.status === "skipped" ? "·" : "…"
+              return (
+                <div key={task.id} className="sync-line" style={{ fontSize: 12, opacity: 0.85 }}>
+                  <span>
+                    {mark} {task.direction === "up" ? "上传" : "下载"}：{task.title}
+                  </span>
+                  <span className="sync-size">{task.status}</span>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
 
       <div className="sync-actions">
         <button className="btn btn-primary" onClick={() => void runSync()} disabled={busy}>
