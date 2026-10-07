@@ -2419,3 +2419,264 @@
 [data-theme='dark'] .reader-progress::before {
   background: #454b55;
 }
+
+/* ============================================================
+   手机布局（安卓 WebView / 窄窗口）
+   断点 768px：桌面端 1280×800 完全不受影响（媒体查询不命中）
+   结构变化：左侧边栏 → 底部导航；系列树 → 书库页顶部横向胶囊
+   ============================================================ */
+
+/* 这两个元素只在手机布局里出现 */
+.mobile-nav,
+.series-chips {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* 外壳改纵向：内容在上，底部导航在下 */
+  .app {
+    flex-direction: column;
+  }
+
+  /* 侧边栏让位给底部导航 */
+  .sidebar {
+    display: none;
+  }
+
+  .main {
+    min-height: 0;
+  }
+
+  /* 给底部导航留位置（同时兼容刘海屏的安全区） */
+  .page {
+    padding: 14px 14px calc(78px + env(safe-area-inset-bottom, 0px));
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .page-head {
+    margin-bottom: 14px;
+  }
+
+  .page-title {
+    font-size: 21px;
+  }
+
+  /* ---------- 底部导航 ---------- */
+  .mobile-nav {
+    position: fixed;
+    inset: auto 0 0 0;
+    width: 100%;
+    z-index: 60;
+    display: flex;
+    height: calc(58px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 12px rgba(16, 24, 40, 0.06);
+  }
+
+  .mobile-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: none;
+    background: transparent;
+    color: var(--text-3);
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-nav-item.active {
+    color: var(--accent);
+  }
+
+  /* ---------- 触摸目标：手指比鼠标粗，按钮统一撑到 40px 以上 ---------- */
+  .btn {
+    min-height: 40px;
+  }
+
+  .icon-btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  /* ---------- 书库：系列横向筛选 ---------- */
+  .series-chips {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 2px 0 12px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .series-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .series-chip {
+    flex: 0 0 auto;
+    padding: 7px 13px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel-soft);
+    color: var(--text-2);
+    font-family: inherit;
+    font-size: 12.5px;
+    white-space: nowrap;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .series-chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* ---------- 今日阅读卡片：封面 + 信息一行，目标环换到下一行 ---------- */
+  .today-card {
+    flex-wrap: wrap;
+    gap: 12px;
+    min-height: 0;
+    padding: 0 14px 0 0;
+  }
+
+  .today-cover {
+    width: 86px;
+    flex: 0 0 86px;
+  }
+
+  .today-info {
+    padding: 16px 0 14px;
+  }
+
+  .today-book {
+    font-size: 17px;
+  }
+
+  /* 按钮与「剩余 xx 分钟」在手机上改成上下排，横排会被卡片右边裁掉 */
+  .today-actions {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .today-remaining {
+    font-size: 11.5px;
+  }
+
+  .today-goal {
+    flex: 0 0 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 16px;
+    padding: 12px 0 14px 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.18);
+  }
+
+  /* 目标环在手机上缩一档（JSX 里写死 124px，这里连内层 SVG 一起缩放） */
+  .today-goal .ring {
+    width: 96px !important;
+    height: 96px !important;
+  }
+
+  .today-goal .ring svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .today-goal .ring-value {
+    font-size: 21px;
+  }
+
+  .today-goal .ring-sub {
+    font-size: 11px;
+  }
+
+  /* ---------- 书架：一行两三本 ---------- */
+  .book-grid {
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 18px 12px;
+  }
+
+  /* ---------- 设置：标签在上、控件在下（横排会挤成一团） ---------- */
+  .setting-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 13px 0;
+  }
+
+  .setting-control {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* 组件里给输入框写死了 px 宽度，手机上让它占满 */
+  .setting-control .input,
+  .setting-control .select {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  .setting-path {
+    max-width: 100%;
+    word-break: break-all;
+  }
+
+  /* ---------- 弹窗：底部弹出、接近全宽（原生 App 观感） ---------- */
+  .modal-mask {
+    place-items: end stretch;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 92vh;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* ---------- 阅读器：加宽触摸目标 + 底部安全区 ---------- */
+  .reader-bar {
+    padding: 8px 10px;
+  }
+
+  .reader-foot {
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .reader-chapter-switch .btn {
+    min-height: 36px;
+  }
+
+  /*
+   * 阅读区留白：设置里的 36px 在 390 宽的屏上太浪费（一行装不下几个字）。
+   * --reader-padding 是内联样式给的变量，这里在**消费它的元素自己身上**重设，
+   * 就近声明压过继承来的值，不需要 !important。
+   */
+  .reader-page,
+  .reader-body,
+  .reader-body.paged {
+    --reader-padding: 18px;
+  }
+
+  .reader-page {
+    padding: 20px var(--reader-padding) 84px;
+  }
+
+  .reader-body.paged {
+    padding: 18px var(--reader-padding) 18px;
+  }
+}

@@ -12,6 +12,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const shotDir = join(root, 'shots')
 const profileDir = join(root, '.edge-profile')
 const base = process.argv[2] ?? 'http://127.0.0.1:5199'
+/** 视口尺寸：默认桌面窗口；手机布局传 SHOT_SIZE=390,844 之类的 */
+const size = process.env.SHOT_SIZE ?? '1280,800'
+const shotPrefix = process.env.SHOT_PREFIX ?? ''
 
 const EDGE_CANDIDATES = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -36,7 +39,7 @@ for (const item of SHOTS) {
   const [route = 'library', modal = '', extra = ''] = item.split(':')
   const query = [`route=${route}`, modal ? `modal=${modal}` : '', extra].filter(Boolean).join('&')
   const url = `${base}/?${query}`
-  const file = join(shotDir, `${item.replace(/[:/\\?=&]/g, '-')}.png`)
+  const file = join(shotDir, `${shotPrefix}${item.replace(/[:/\\?=&]/g, '-')}.png`)
   rmSync(file, { force: true })
   const result = spawnSync(
     edge,
@@ -46,7 +49,7 @@ for (const item of SHOTS) {
       '--no-sandbox',
       '--hide-scrollbars',
       '--force-device-scale-factor=1',
-      '--window-size=1280,800',
+      '--window-size=' + size,
       '--virtual-time-budget=4000',
       `--user-data-dir=${profileDir}`,
       `--screenshot=${file}`,

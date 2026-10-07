@@ -25,7 +25,8 @@
     "sync:demo": "node scripts/sync-demo.mjs",
     "check": "npm run typecheck && npm run check:epub && npm run check:backend && npm run check:sync && npm run check:webdav",
     "shot": "node scripts/screenshot.mjs",
-    "shot:web": "node scripts/shot-web.mjs"
+    "shot:web": "node scripts/shot-web.mjs",
+    "shot:mobile": "node scripts/shot-mobile.mjs"
   },
   "dependencies": {
     "fast-xml-parser": "^4.5.1",

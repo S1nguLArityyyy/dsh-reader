@@ -328,6 +328,27 @@ export function LibraryPage() {
         </div>
       </div>
 
+      {/* 手机端：系列 / 合集横向筛选（桌面端用侧边栏的二级菜单，这里由 CSS 隐藏） */}
+      <div className="series-chips">
+        <button
+          className={`series-chip${seriesFilter === null ? ' active' : ''}`}
+          onClick={() => setSeriesFilter(null)}
+        >
+          全部 {books.length}
+        </button>
+        {allGroups
+          .filter((group) => group.books.length > 0)
+          .map((group) => (
+            <button
+              key={group.key}
+              className={`series-chip${seriesFilter === group.key ? ' active' : ''}`}
+              onClick={() => setSeriesFilter(group.key)}
+            >
+              {group.title} {group.books.length}
+            </button>
+          ))}
+      </div>
+
       <div className="lib-search">
         <Search size={16} />
         <input

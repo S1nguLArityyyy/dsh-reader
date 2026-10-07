@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { Upload } from 'lucide-react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { BarChart3, Library, Settings as SettingsIcon, Upload } from 'lucide-react'
 import { useApp, type Route } from './store/app'
 import { Sidebar } from './components/Sidebar'
 import { ConflictModal, SyncStatusModal } from './components/SyncModals'
@@ -17,6 +17,34 @@ function PageBody({ route }: { route: Route }) {
   if (route === 'stats') return <StatsPage />
   if (route === 'settings') return <SettingsPage />
   return <LibraryPage />
+}
+
+/**
+ * 手机端的底部导航（桌面端由 CSS 隐藏）。
+ * 桌面用左侧边栏，屏宽 ≤768px 时侧边栏让位给这个，系列筛选改到书库页顶部的横向胶囊。
+ */
+function MobileNav() {
+  const route = useApp((s) => s.route)
+  const go = useApp((s) => s.go)
+  const items: Array<{ key: Route; label: string; icon: ReactNode }> = [
+    { key: 'library', label: '书库', icon: <Library size={20} /> },
+    { key: 'stats', label: '统计', icon: <BarChart3 size={20} /> },
+    { key: 'settings', label: '设置', icon: <SettingsIcon size={20} /> }
+  ]
+  return (
+    <nav className="mobile-nav">
+      {items.map((item) => (
+        <button
+          key={item.key}
+          className={`mobile-nav-item${route === item.key ? ' active' : ''}`}
+          onClick={() => go(item.key)}
+        >
+          {item.icon}
+          <span>{item.label}</span>
+        </button>
+      ))}
+    </nav>
+  )
 }
 
 export default function App() {
@@ -121,6 +149,9 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      {/* 底部导航放在 .app 外面：固定在视口上，不受页面容器的影响 */}
+      <MobileNav />
 
       {dragging ? (
         <div className="drop-overlay">

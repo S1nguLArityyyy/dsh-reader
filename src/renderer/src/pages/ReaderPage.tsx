@@ -231,6 +231,33 @@ export function ReaderPage() {
   const turnRef = useRef(turn)
   turnRef.current = turn
 
+  /* ---------- 手机：左右滑动翻页（点击两侧已有，滑动更合手机习惯） ---------- */
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el || mode !== 'paged' || !('ontouchstart' in window)) return
+    let startX = 0
+    let startY = 0
+    const onStart = (event: TouchEvent): void => {
+      startX = event.touches[0]?.clientX ?? 0
+      startY = event.touches[0]?.clientY ?? 0
+    }
+    const onEnd = (event: TouchEvent): void => {
+      const touch = event.changedTouches[0]
+      if (!touch) return
+      const dx = touch.clientX - startX
+      const dy = touch.clientY - startY
+      // 横向位移够大、且明显大于纵向，才算翻页（否则是滚动或选字）
+      if (Math.abs(dx) < 44 || Math.abs(dx) < Math.abs(dy) * 1.2) return
+      turnRef.current(dx < 0 ? 1 : -1)
+    }
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchend', onEnd)
+    }
+  }, [mode])
+
   /* ---------- 鼠标滚轮翻页 ---------- */
   useEffect(() => {
     const el = bodyRef.current
@@ -551,7 +578,11 @@ export function ReaderPage() {
           <span className="reader-progress-knob" style={{ left: `${percentText(chapterRatio)}%` }} />
         </div>
         <span className="reader-foot-pct whole">全书 {percentText(totalPercent)}%</span>
-        {mode === 'paged' ? <span className="reader-hint">点击两侧或滚动滚轮翻页</span> : null}
+        {mode === 'paged' ? (
+          <span className="reader-hint">
+            {'ontouchstart' in window ? '左右滑动或点击两侧翻页' : '点击两侧或滚动滚轮翻页'}
+          </span>
+        ) : null}
         <button className="icon-btn sm" onClick={() => turn(1)} title="下一页">
           <ChevronRight size={17} />
         </button>
