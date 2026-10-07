@@ -51,6 +51,9 @@ const api = {
     importFolderDialog: () => invoke<ImportResult>('library:importFolderDialog'),
     importPaths: (paths: string[]) => invoke<ImportResult>('library:importPaths', paths),
     remove: (id: string, deleteFile: boolean) => invoke<Book[]>('library:remove', id, deleteFile),
+    /** 只清除阅读记录（进度 + 时长），书保留 */
+    clearRecords: (id: string) => invoke<Book[]>('library:clearRecords', id),
+    clearAllRecords: () => invoke<Book[]>('library:clearAllRecords'),
     update: (id: string, patch: Partial<Book>) => invoke<Book[]>('library:update', id, patch),
     /** 批量标记「同步到云端」 */
     markSyncUpload: (value: boolean) => invoke<Book[]>('library:markSyncUpload', value),

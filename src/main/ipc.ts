@@ -198,6 +198,24 @@ export function registerIpc(store: Store, sync: SyncService): void {
     return store.books
   })
 
+  handle('library:clearRecords', (id: string) => {
+    // 只清除这本书的阅读记录（进度 + 时长），书本身保留
+    delete store.progress[id]
+    store.sessions = store.sessions.filter((row) => row.bookId !== id)
+    store.save('progress')
+    store.save('sessions')
+    return store.books
+  })
+
+  handle('library:clearAllRecords', () => {
+    // 清空所有书的阅读记录，书全部保留
+    store.progress = {}
+    store.sessions = []
+    store.save('progress')
+    store.save('sessions')
+    return store.books
+  })
+
   handle('library:reveal', (id: string) => {
     const book = store.books.find((b) => b.id === id)
     if (book) shell.showItemInFolder(book.filePath)

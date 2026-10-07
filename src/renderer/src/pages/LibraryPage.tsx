@@ -45,6 +45,7 @@ export function LibraryPage() {
   const openReader = useApp((s) => s.openReader)
   const openDetail = useApp((s) => s.openDetail)
   const runSync = useApp((s) => s.runSync)
+  const refreshAll = useApp((s) => s.refreshAll)
   const removeBook = useApp((s) => s.removeBook)
   const updateBook = useApp((s) => s.updateBook)
   const saveSettings = useApp((s) => s.saveSettings)
@@ -220,6 +221,14 @@ export function LibraryPage() {
                       void confirmDelete(book, false)
                     }}
                   >
+                    <button
+                      onClick={() => {
+                        void window.api.library.clearRecords(book.id).then(() => refreshAll())
+                        close()
+                      }}
+                    >
+                      清除阅读记录（保留书）
+                    </button>
                     移出书库（保留文件）
                   </button>
                   <button
