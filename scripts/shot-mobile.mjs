@@ -122,7 +122,10 @@ try {
 
   for (const item of shots) {
     const [route = 'library', modal = '', extra = ''] = item.split(':')
-    const query = [`route=${route}`, modal ? `modal=${modal}` : '', extra].filter(Boolean).join('&')
+    // 以 ? 开头 = 直接用这段 query（手机端项目里有 ?probe=1 这类非 route 参数）
+    const query = item.startsWith('?')
+      ? item.slice(1)
+      : [`route=${route}`, modal ? `modal=${modal}` : '', extra].filter(Boolean).join('&')
     await cdp.send('Page.navigate', { url: `${base}/?${query}` })
     await sleep(1800)
     const shot = await cdp.send('Page.captureScreenshot', { format: 'png' })
