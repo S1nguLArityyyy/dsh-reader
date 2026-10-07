@@ -14,6 +14,7 @@
  *   阶段 3              接进 engine，与 WebDAV 的云端格式互通
  */
 
+import { createHash } from 'node:crypto'
 import { BrowserWindow, session } from 'electron'
 import {
   CloudNotConnectedError,
@@ -154,8 +155,66 @@ export class PanWebProvider implements CloudProvider {
 
   /* ---------------- 阶段 2 才实现（现在明确报错，不静默失败） ---------------- */
 
-  async ensureDir(): Promise<void> {
-    throw new Error('百度网盘上传依赖的三步分片接口属阶段 2，尚未实现')
+  /** 节流：百度对短时间内的密集请求很敏感（坚果云那次就是被打成 503 的） */
+  private async pause(ms = 400): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms))
+  }
+
+  private async postForm(path: string, fields: Record<string, string>): Promise<{ status: number; text: string }> {
+    const body = new URLSearchParams({
+      ...fields,
+      bdstoken: await this.ensureToken(),
+      channel: 'chunlei',
+      web: '1',
+      app_id: '250528',
+      clienttype: '0'
+    }).toString()
+    const response = await this.ses().fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    })
+    return { status: response.status, text: await response.text() }
+  }
+
+  private async ensureToken(): Promise<string> {
+    if (this.tokenCache) return this.tokenCache
+    const info = await this.templateVariable()
+    const token = info?.result?.bdstoken
+    if (!token) throw new CloudNotConnectedError('登录已过期：请重新登录百度网盘')
+    this.tokenCache = String(token)
+    return this.tokenCache
+  }
+
+  /** 逐级建目录。errno 0 = 建成功；-8 = 已存在（都算成功） */
+  async ensureDir(path: string): Promise<void> {
+    const target = normalizeCloudPath(path)
+    const segments = target.split('/').filter(Boolean)
+    if (segments.length === 0) return
+    let prefix = ''
+    for (const segment of segments) {
+      prefix = `${prefix}/${segment}`
+      const { status, text } = await this.postForm('/api/create?a=commit', {
+        path: prefix,
+        isdir: '1',
+        block_list: '[]'
+      })
+      this.options.log?.(`[pan-web] POST create(dir) ${prefix} → HTTP ${status}  ${text.slice(0, 140)}`)
+      if (status !== 200) throw new Error(`建目录失败（HTTP ${status}）：${prefix}`)
+      let errno: number | undefined
+      try {
+        errno = (JSON.parse(text) as { errno?: number }).errno
+      } catch {
+        throw new Error(`建目录返回无法解析：${text.slice(0, 120)}`)
+      }
+      if (errno !== 0 && errno !== -8) {
+        // -6 / -7 = 登录态问题；132 = 被限流
+        if (errno === -6 || errno === -7) throw new CloudNotConnectedError('登录已过期：请重新登录百度网盘')
+        if (errno === 132) throw new Error('被百度限流（errno 132）：请稍后再试，本轮已放弃')
+        throw new Error(`建目录失败（errno ${errno}）：${prefix}`)
+      }
+      await this.pause()
+    }
   }
 
   async read(): Promise<Buffer | null> {
