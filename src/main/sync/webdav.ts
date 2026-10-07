@@ -217,12 +217,23 @@ export class WebDavProvider implements CloudProvider {
     headers['User-Agent'] = headers['User-Agent'] ?? 'DshReader/0.1 (WebDAV)'
     if (init.depth) headers.Depth = init.depth
 
-    const response = await this.fetchImpl(this.toUrl(cloudPath, config), {
-      method: init.method,
-      headers,
-      body: init.body,
-      signal: AbortSignal.timeout(init.timeoutMs ?? this.timeoutMs)
-    })
+    const bytes = init.body ? init.body.byteLength : 0
+    const startedAt = Date.now()
+    const label = `${init.method} ${cloudPath}${bytes > 0 ? ` (${Math.round(bytes / 1024)}KB)` : ''}`
+    void logSync(`→ ${label}`)
+    let response: Response
+    try {
+      response = await this.fetchImpl(this.toUrl(cloudPath, config), {
+        method: init.method,
+        headers,
+        body: init.body,
+        signal: AbortSignal.timeout(init.timeoutMs ?? this.timeoutMs)
+      })
+    } catch (error) {
+      void logSync(`✗ ${label}  ${Date.now() - startedAt}ms  ${error instanceof Error ? error.message : String(error)}`)
+      throw error
+    }
+    void logSync(`← ${label}  HTTP ${response.status}  ${Date.now() - startedAt}ms`)
     if (response.status === 401 || response.status === 403) {
       throw new CloudNotConnectedError(`WebDAV 认证失败（HTTP ${response.status}）：请检查账号与应用密码`)
     }
@@ -247,6 +258,7 @@ export class WebDavProvider implements CloudProvider {
       } catch (err) {
         lastError = err
         if (err instanceof CloudNotConnectedError) throw err
+        void logSync(`↻ 第 ${attempt} 次失败，准备重试：${err instanceof Error ? err.message : String(err)}`)
         if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, attempt === 1 ? 1000 : 3000))
       }
     }
@@ -304,4 +316,27 @@ export class WebDavProvider implements CloudProvider {
     }
     return href.endsWith('/')
   }
+}
+
+/**
+ * 同步调试日志：写到 <userData>/logs/sync.log。
+ * 排查"同步卡在哪一步"用 —— 每条请求都有 方法 / 路径 / 状态码 / 耗时 / 字节数。
+ * 用动态 import 拿 electron 与 fs，避免动顶部的导入块。
+ */
+export async function logSync(line: string): Promise<void> {
+  try {
+    const { app } = await import('electron')
+    const { appendFile, mkdir } = await import('node:fs/promises')
+    const { join } = await import('node:path')
+    const dir = join(app.getPath('userData'), 'logs')
+    await mkdir(dir, { recursive: true })
+    await appendFile(join(dir, 'sync.log'), `${new Date().toISOString()}  ${line}\n`, 'utf8')
+  } catch {
+    /* 日志失败绝不能影响同步本身 */
+  }
+}
+
+/** 给用户看的日志路径 */
+export function syncLogPath(): string {
+  return 'logs/sync.log（在应用数据目录下）'
 }
