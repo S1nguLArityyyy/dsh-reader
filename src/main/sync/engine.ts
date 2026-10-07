@@ -504,6 +504,8 @@ export class SyncEngine {
     const store = this.store
     const settings = store.settings.sync
     const dir = joinCloudPath(remoteDir, 'books')
+    // 必须先建目录：否则上传每本书都会 404（实测：云端 books/ 不存在 → 10 本书全部失败）
+    await this.provider.ensureDir(dir)
     const maxBytes = this.options.maxBookBytes ?? MAX_BOOK_BYTES
     const files: Record<string, ManifestFile> = { ...(manifest?.files ?? {}) }
     let bytes = 0
