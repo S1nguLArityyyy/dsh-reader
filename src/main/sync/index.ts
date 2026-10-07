@@ -116,7 +116,8 @@ export class SyncService {
     const cached = this.providers.get(id)
     if (cached) return cached
     // 百度网盘尚未接入：未知类型一律按本地文件夹处理，避免设置被改坏时整个同步不可用
-    const created = id === 'webdav' ? this.createWebDav() : this.createLocal()
+    const created =
+      id === 'webdav' ? this.createWebDav() : id === 'baidu' ? this.createPanWeb() : this.createLocal()
     this.providers.set(id, created)
     return created
   }
