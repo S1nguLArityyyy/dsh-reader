@@ -1920,18 +1920,22 @@
 }
 
 .today-cover {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: stretch;
-  background: transparent;
+  position: relative;
+  flex: 0 0 118px;
+  width: 118px;
+  align-self: stretch;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.16);
 }
 
 .today-cover img,
 .today-cover .book-cover-fallback {
+  position: absolute;
+  inset: 0;
+  width: 100%;
   height: 100%;
-  width: auto;
   object-fit: cover;
-  border-radius: 0;
+  object-position: center top;
 }
 
 .today-info {
