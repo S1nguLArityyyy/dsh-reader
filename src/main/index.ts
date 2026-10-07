@@ -1,3 +1,4 @@
+import { logSync } from './sync/webdav'
 import { app, BrowserWindow, net, protocol, shell } from 'electron'
 import { appendFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -175,7 +176,14 @@ async function bootstrap(): Promise<void> {
     return net.fetch(pathToFileURL(raw).toString())
   })
 
-  syncService = new SyncService(localStore, { log, onChanged: notifySyncChanged })
+  syncService = new SyncService(localStore, {
+      log: (line: string) => {
+        // 同步日志落盘（userData/logs/sync.log）：排查"卡在哪一步 / 为什么跳过"靠它
+        void logSync(line)
+        log(line)
+      },
+      onChanged: notifySyncChanged
+    })
   registerIpc(localStore, syncService)
 
   mainWindow = createWindow()

@@ -519,7 +519,12 @@ export class SyncEngine {
 
     if (settings.uploadBooks) {
       for (const book of store.books) {
-        if (!book.syncUpload || !book.contentHash) continue
+        if (!book.syncUpload || !book.contentHash) {
+          this.options.log?.(
+            `[sync]《${book.title}》跳过上传：syncUpload=${String(book.syncUpload)} contentHash=${book.contentHash ? '有' : '空（文件可能不存在或未计算）'}`
+          )
+          continue
+        }
         const key = `sha1:${book.contentHash}`
         const remote = cloud.get(key)
         if (remote && remote.size === book.fileSize) continue // 云端已有同一份，不重传
@@ -529,7 +534,8 @@ export class SyncEngine {
           continue
         }
         try {
-          const data = await readFile(book.filePath)
+          this.options.log?.(`[sync] 开始上传《${book.title}》(${Math.round(book.fileSize / 1024)}KB)`)
+        const data = await readFile(book.filePath)
           await this.provider.write(joinCloudPath(dir, cloudFileName(key, '.epub')), data)
           bytes += data.byteLength
           files[key] = {
@@ -541,6 +547,7 @@ export class SyncEngine {
             deviceId: store.settings.deviceId
           }
           tasks.push(this.bookTask(book.id, book.title, 'up', 'done', data.byteLength))
+          this.options.log?.(`[sync]《${book.title}》已上传 ${Math.round(data.byteLength / 1024)}KB`)
         } catch (err) {
           tasks.push(this.bookTask(book.id, book.title, 'up', 'error', book.fileSize))
           this.options.log?.(`[sync]《${book.title}》上传失败：${String(err)}`)
