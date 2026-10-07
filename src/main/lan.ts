@@ -87,7 +87,17 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
               hash: options.hashOf?.(name) ?? null
             })
           }
-          const body = JSON.stringify({ count: items.length, books: items })
+          // 手机端可以带上自己已有的指纹（?have=a,b,c ✓）→ 这里只返回缺的 ✓
+          // 列表从"全量 85 条"降到"缺的几条" ✓ 手机端也就完全不用逐本比对 ✓
+          const haveParam = url.searchParams.get('have') ?? ''
+          const haveSet = new Set(
+            haveParam
+              .split(',')
+              .map((item) => item.trim().toLowerCase())
+              .filter(Boolean)
+          )
+          const filtered = haveSet.size > 0 ? items.filter((item) => !item.hash || !haveSet.has(String(item.hash).toLowerCase())) : items
+          const body = JSON.stringify({ count: filtered.length, total: items.length, books: filtered })
           res.writeHead(200, {
             'Content-Type': 'application/json; charset=utf-8',
             'Content-Length': Buffer.byteLength(body),
