@@ -2,9 +2,9 @@
  * 局域网书籍服务（手机 ↔ 电脑直传，不经网盘、不限速）。
  *
  * 设计取舍：
- *   · 只做两件事：列书 + 取书 ✓（手机拿到 epub 后自己解析标题/封面 ✓ 所以不需要清单文件 ✓）
+ *   · 做三件事：列书 + 取书 + 【导出阅读记录】✓（手机在局域网内直接拉记录 ✓ 不经网盘 ✓）
  *   · 无鉴权 ✓ 仅监听局域网 ✓（端口 8787 ✓）
- *   · 只允许 GET ✓ 且只服务 books 目录下的 .epub ✓（防目录穿越 ✓）
+ *   · 只允许 GET ✓ books 只服务 .epub ✓ records 只读导出 ✓（绝不写、绝不删 ✓）
  *   · 启动时把可达地址写入 <userData>/lan.txt ✓ 方便界面/排查读取 ✓
  *
  * 手机端用法：设置 → 网盘同步 → 服务商【局域网】→ 填 http://<电脑IP>:8787 ✓
@@ -12,13 +12,15 @@
 
 import { createServer, type Server } from 'node:http'
 import { createReadStream } from 'node:fs'
-import { readdir, stat, writeFile } from 'node:fs/promises'
+import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { networkInterfaces } from 'node:os'
 import { basename, extname, join, normalize } from 'node:path'
 
 export interface LanServerOptions {
   /** 书籍目录（电脑本地书库） */
   booksDir: string
+  /** 桌面端数据目录（progress.json / sessions.json 在这里 ✓） */
+  dataDir?: string
   /** 取某本书的主色（桌面端算好的 ✓ 手机端直接沿用 ✓ 两端一致 ✓） */
   colorOf?: (fileName: string) => string | null
   /** 写入地址信息的文件（可选） */
@@ -90,6 +92,43 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
           })
           res.end(body)
           log(`[lan] 列书 → ${items.length} 本`)
+          return
+        }
+        if (url.pathname === '/records') {
+          // 阅读记录（进度 + 时长）✓ 只读 ✓ 供手机在局域网内直接拉取 ✓
+          // 键统一用【内容指纹】✓ 与手机端的书 id 一致 ✓ 两端才能对上同一本书 ✓
+          const dir = options.dataDir ?? booksDir
+          const readJson = async (name: string): Promise<unknown> => {
+            try {
+              return JSON.parse(await readFile(join(dir, `${name}.json`), 'utf8')) as unknown
+            } catch {
+              return null
+            }
+          }
+          const library = (await readJson('library')) as Array<{ id?: string; contentHash?: string | null }> | null
+          const idToHash = new Map<string, string>()
+          for (const item of library ?? []) {
+            if (item?.id && item.contentHash) idToHash.set(item.id, item.contentHash)
+          }
+          const progressRaw = (await readJson('progress')) as Record<string, Record<string, unknown>> | null
+          const progress: Record<string, unknown> = {}
+          for (const [id, record] of Object.entries(progressRaw ?? {})) {
+            const key = idToHash.get(id) ?? id
+            progress[key] = { ...record, bookId: key }
+          }
+          const sessionsRaw = (await readJson('sessions')) as Array<Record<string, unknown>> | null
+          const sessions = (sessionsRaw ?? []).map((row) => {
+            const id = String(row.bookId ?? '')
+            return { ...row, bookId: idToHash.get(id) ?? id }
+          })
+          const body = JSON.stringify({ progress, sessions, exportedAt: Date.now() })
+          res.writeHead(200, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Length': Buffer.byteLength(body),
+            'Cache-Control': 'no-store'
+          })
+          res.end(body)
+          log(`[lan] 记录导出 → 进度 ${Object.keys(progress).length} 条 · 时长 ${sessions.length} 条`)
           return
         }
         if (url.pathname.startsWith('/books/')) {

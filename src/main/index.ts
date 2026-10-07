@@ -194,6 +194,7 @@ async function bootstrap(): Promise<void> {
   try {
     const lan = await startLanServer({
       booksDir: localStore.booksDir,
+      dataDir,
       // 手机端直接沿用桌面端算好的主色 ✓（两套实现算"审美"必然不一致 ✗）
       colorOf: (fileName: string) => {
         const hit = localStore.books.find((item) => item.fileName === fileName || `${item.id}.epub` === fileName)
