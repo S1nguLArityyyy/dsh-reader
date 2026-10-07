@@ -15,6 +15,7 @@
     "dist:installer": "npm run build && electron-builder --win nsis",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "samples": "node scripts/make-samples.mjs",
+    "import:books": "node scripts/import-books.mjs",
     "dev:web": "vite --config vite.web.config.ts",
     "build:web": "vite build --config vite.web.config.ts",
     "preview:web": "node scripts/serve-web.mjs",
