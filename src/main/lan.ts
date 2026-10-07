@@ -68,7 +68,8 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
             if (at >= 0) url.pathname = raw.slice(at)
           }
         }
-        if (req.method !== 'GET') {
+        const isRecordsPost = req.method === 'POST' && url.pathname === '/records'
+        if (req.method !== 'GET' && !isRecordsPost) {
           res.writeHead(405).end('only GET')
           return
         }
@@ -105,6 +106,80 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
           })
           res.end(body)
           log(`[lan] 列书 → ${items.length} 本`)
+          return
+        }
+        if (req.method === 'POST' && url.pathname === '/records') {
+          // 手机端把它的阅读记录推上来（只合并，绝不删除任何文件 ✓）
+          // 写入前先备份一份 .bak ✓ 万一合并逻辑有问题可以直接回滚 ✓
+          const dir = options.dataDir ?? booksDir
+          const chunks: Buffer[] = []
+          for await (const chunk of req) chunks.push(chunk as Buffer)
+          const raw = Buffer.concat(chunks).toString('utf8')
+          let payload: { progress?: Record<string, unknown>; sessions?: Array<Record<string, unknown>> } = {}
+          try {
+            payload = JSON.parse(raw) as typeof payload
+          } catch {
+            res.writeHead(400).end('bad json')
+            return
+          }
+          const readJson = async (name: string): Promise<unknown> => {
+            try {
+              return JSON.parse(await readFile(join(dir, `${name}.json`), 'utf8')) as unknown
+            } catch {
+              return null
+            }
+          }
+          const readBooks = (await readJson('library')) as Array<{ id?: string; contentHash?: string | null }> | null
+          const hashToId = new Map<string, string>()
+          for (const item of readBooks ?? []) {
+            if (item?.id && item.contentHash) hashToId.set(String(item.contentHash).toLowerCase(), item.id)
+          }
+          const before = {
+            progress: (await readJson('progress')) as Record<string, Record<string, unknown>> | null,
+            sessions: (await readJson('sessions')) as Array<Record<string, unknown>> | null
+          }
+          await writeFile(join(dir, 'progress.json.bak'), JSON.stringify(before.progress ?? {}, null, 2), 'utf8').catch(() => undefined)
+          await writeFile(join(dir, 'sessions.json.bak'), JSON.stringify(before.sessions ?? [], null, 2), 'utf8').catch(() => undefined)
+
+          let progressMerged = 0
+          const progress = { ...(before.progress ?? {}) }
+          for (const [rawId, record] of Object.entries(payload.progress ?? {})) {
+            const key = hashToId.get(String(rawId).toLowerCase()) ?? String(rawId)
+            const incoming = record as Record<string, unknown>
+            const mine = progress[key]
+            if (Number(incoming?.updatedAt ?? 0) > Number(mine?.updatedAt ?? 0)) {
+              progress[key] = { ...incoming, bookId: key }
+              progressMerged += 1
+            }
+          }
+          let sessionsMerged = 0
+          const rows = [...(before.sessions ?? [])]
+          for (const incoming of payload.sessions ?? []) {
+            const rawId = String(incoming.bookId ?? '')
+            const key = hashToId.get(rawId.toLowerCase()) ?? rawId
+            const day = String(incoming.day ?? '')
+            if (!key || !day) continue
+            const deviceId = String(incoming.deviceId ?? 'mobile')
+            const seconds = Number(incoming.seconds ?? 0)
+            const index = rows.findIndex(
+              (row) => String(row.bookId) === key && String(row.day) === day && String(row.deviceId ?? 'desktop') === deviceId
+            )
+            if (index >= 0) {
+              if (seconds > Number(rows[index].seconds ?? 0)) {
+                rows[index] = { ...rows[index], seconds }
+                sessionsMerged += 1
+              }
+            } else {
+              rows.push({ bookId: key, day, seconds, deviceId })
+              sessionsMerged += 1
+            }
+          }
+          await writeFile(join(dir, 'progress.json'), JSON.stringify(progress, null, 2), 'utf8')
+          await writeFile(join(dir, 'sessions.json'), JSON.stringify(rows, null, 2), 'utf8')
+          const body = JSON.stringify({ ok: true, progressMerged, sessionsMerged })
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) })
+          res.end(body)
+          log(`[lan] 收到手机记录 → 进度 +${progressMerged} · 时长 +${sessionsMerged}（已备份 .bak ✓）`)
           return
         }
         if (url.pathname === '/records') {
