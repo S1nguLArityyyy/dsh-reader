@@ -1537,7 +1537,7 @@
 .reader-page.paged svg {
   max-height: calc(var(--reader-col-height, 560px) - 56px);
   width: auto;
-  object-fit: contain;
+  object-fit: cover; /* 填满容器 ✓ 缝彻底消失 ✓（138×200 ≈ 书封比例 ✓ 只裁掉几像素 ✓） */
 }
 
 .reader-page h1,
@@ -1949,8 +1949,8 @@
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain; /* 完整显示 ✓ 不裁 ✗ */
-  object-position: center;
+  object-fit: cover; /* 填满容器 ✓ 缝彻底消失 ✓（138×200 ≈ 书封比例 ✓ 只裁掉几像素 ✓） */
+  object-position: center top; /* 从顶部对齐 ✓ 标题与人物头不会被切 ✓ */
 }
 
 .today-info {
