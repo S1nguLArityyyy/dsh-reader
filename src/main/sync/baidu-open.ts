@@ -251,8 +251,42 @@ export class BaiduOpenProvider implements CloudProvider {
     }
   }
 
-  async read(): Promise<Buffer | null> {
-    throw new Error('百度开放平台下载属下一步实现')
+  /** 用目录列表拿到文件的 fs_id（xpan 的 filemetas 需要它，而不是路径） */
+  private async fsidOf(path: string): Promise<string> {
+    const token = await this.accessToken()
+    const target = normalizeCloudPath(path)
+    const parent = normalizeCloudPath(target.split('/').slice(0, -1).join('/') || '/')
+    const name = target.split('/').filter(Boolean).pop() ?? ''
+    const body = await this.call<{ errno?: number; list?: Array<Record<string, unknown>> }>(
+      `${XPAN}/file?method=list&limit=1000&access_token=${encodeURIComponent(token)}` +
+        `&dir=${encodeURIComponent(parent)}`
+    )
+    if (body.errno !== 0) return ''
+    const hit = (body.list ?? []).find((item) => String(item.server_filename ?? '') === name)
+    return hit ? String(hit.fs_id ?? '') : ''
+  }
+
+  /**
+   * 下载。
+   *
+   * ★ 关键一步：`GET <dlink>&access_token=…` ★
+   * 网页会话路线就是死在这里（缺网页签名 sign → 403 / 31362），
+   * 而开放平台用 access_token 取内容是完全合法的 ✓（参照那个能正常下载的阅读器 ✓）。
+   */
+  async read(path: string): Promise<Buffer | null> {
+    const token = await this.accessToken()
+    const fsid = await this.fsidOf(path)
+    if (!fsid) return null
+    const meta = await this.call<{ errno?: number; info?: Array<Record<string, unknown>> }>(
+      `${XPAN}/multimedia?method=filemetas&dlink=1&access_token=${encodeURIComponent(token)}` +
+        `&fsids=${encodeURIComponent(JSON.stringify([Number(fsid)]))}`
+    )
+    const dlink = meta.info?.[0]?.dlink
+    if (!dlink) return null
+    const response = await fetch(`${String(dlink)}&access_token=${encodeURIComponent(token)}`)
+    this.options.log?.(`[baidu] GET dlink → HTTP ${response.status}  ${path}`)
+    if (!response.ok) return null
+    return Buffer.from(await response.arrayBuffer())
   }
 
   async write(): Promise<void> {
