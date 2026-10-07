@@ -21,6 +21,8 @@ export interface LanServerOptions {
   booksDir: string
   /** 桌面端数据目录（progress.json / sessions.json 在这里 ✓） */
   dataDir?: string
+  /** 取某本书的内容指纹（手机端据此在下载【之前】就跳过已有书 ✓ 省掉整本下载 ✓） */
+  hashOf?: (fileName: string) => string | null
   /** 取某本书的主色（桌面端算好的 ✓ 手机端直接沿用 ✓ 两端一致 ✓） */
   colorOf?: (fileName: string) => string | null
   /** 写入地址信息的文件（可选） */
@@ -81,7 +83,8 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
               name,
               size: info?.size ?? 0,
               modifiedAt: info?.mtimeMs ?? 0,
-              color: options.colorOf?.(name) ?? null
+              color: options.colorOf?.(name) ?? null,
+              hash: options.hashOf?.(name) ?? null
             })
           }
           const body = JSON.stringify({ count: items.length, books: items })

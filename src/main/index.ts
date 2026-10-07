@@ -195,6 +195,11 @@ async function bootstrap(): Promise<void> {
     const lan = await startLanServer({
       booksDir: localStore.booksDir,
       dataDir,
+      // 手机端据此在下载之前就跳过已有书 ✓ 不必为了比对而下整本 ✓
+      hashOf: (fileName: string) => {
+        const hit = localStore.books.find((item) => item.fileName === fileName || `${item.id}.epub` === fileName)
+        return hit?.contentHash ?? null
+      },
       // 手机端直接沿用桌面端算好的主色 ✓（两套实现算"审美"必然不一致 ✗）
       colorOf: (fileName: string) => {
         const hit = localStore.books.find((item) => item.fileName === fileName || `${item.id}.epub` === fileName)
