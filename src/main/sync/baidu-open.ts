@@ -224,8 +224,31 @@ export class BaiduOpenProvider implements CloudProvider {
 
   /* ---------------- 后续步骤实现（明确报错，不静默失败） ---------------- */
 
-  async ensureDir(): Promise<void> {
-    throw new Error('百度开放平台建目录属下一步实现')
+  /** 逐级建目录（xpan create）。先查再建：百度对已存在目录会自动改名，不能盲目建 */
+  async ensureDir(path: string): Promise<void> {
+    const token = await this.accessToken()
+    const target = normalizeCloudPath(path)
+    const segments = target.split('/').filter(Boolean)
+    if (segments.length === 0) return
+    let prefix = ''
+    for (const segment of segments) {
+      prefix = `${prefix}/${segment}`
+      const existing = await this.stat(prefix).catch(() => null)
+      if (existing) continue
+      const body = new URLSearchParams({ path: prefix, isdir: '1', access_token: token }).toString()
+      const created = await this.call<{ errno?: number }>(`${XPAN}/file?method=create`, {
+        method: 'POST',
+        body
+      })
+      // 0 = 建成功；-8 = 已存在（都算成功）
+      if (created.errno !== 0 && created.errno !== -8) {
+        if (created.errno === -6 || created.errno === -7) {
+          throw new CloudNotConnectedError('百度网盘授权已失效：请点「连接」重新授权')
+        }
+        throw new Error(`建目录失败（errno ${created.errno}）：${prefix}`)
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400))
+    }
   }
 
   async read(): Promise<Buffer | null> {
