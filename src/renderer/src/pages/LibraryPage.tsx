@@ -389,7 +389,13 @@ export function LibraryPage() {
               className="card today-card"
               style={{ background: coverFade(continueBook?.coverColor ?? null, continueBook?.id ?? 'empty') }}
             >
-              <div className="today-cover">{continueBook ? <BookCover book={continueBook} /> : null}</div>
+              <div
+                className="today-cover"
+                /* 容器底色 = 封面主色 ✓ 封面比容器窄时那条边与封面同色 ✓ 看不出缝 ✓ */
+                style={{ background: continueBook?.coverColor ?? 'transparent' }}
+              >
+                {continueBook ? <BookCover book={continueBook} /> : null}
+              </div>
 
               <div className="today-info">
                 <div className="today-label">今日阅读</div>
