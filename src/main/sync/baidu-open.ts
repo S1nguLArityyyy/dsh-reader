@@ -244,15 +244,33 @@ export class BaiduOpenProvider implements CloudProvider {
 /** 从授权页读出 code（oob 模式：页面直接显示一串授权码） */
 async function readCodeFromWindow(win: BrowserWindow): Promise<string> {
   const deadline = Date.now() + 5 * 60_000
+  const dumpFile = join(app.getPath('userData'), 'baidu-auth-page.txt')
+  let lastDump = ''
+  // innerText 读不到 input/textarea 的值 —— 而 oob 授权码常放在只读输入框里（用户给的码是 32 位 hex）
+  const script = [
+    '(() => {',
+    '  const parts = []',
+    '  if (document.body) parts.push(document.body.innerText || "")',
+    '  document.querySelectorAll("input,textarea").forEach((el) => { if (el.value) parts.push(el.value) })',
+    '  parts.push(document.documentElement ? document.documentElement.outerHTML.slice(0, 20000) : "")',
+    '  return parts.join("\\n---\\n")',
+    '})()'
+  ].join('\n')
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 1500))
     if (win.isDestroyed()) return ''
-    const text = await win.webContents
-      .executeJavaScript('document.body ? document.body.innerText : ""')
-      .catch(() => '')
+    const text = String(await win.webContents.executeJavaScript(script).catch(() => ''))
+    if (text && text !== lastDump) {
+      lastDump = text
+      try {
+        await writeFile(dumpFile, text, 'utf8')
+      } catch {
+        /* 忽略 */
+      }
+    }
     const matched =
-      /(?:授权码|验证码|code)[^\w]{0,12}([0-9a-f]{16,})/i.exec(String(text)) ??
-      /\b([0-9a-f]{32})\b/.exec(String(text))
+      /(?:授权码|请复制|code)[^\w]{0,20}([A-Za-z0-9_-]{20,120})/.exec(text) ??
+      /\b([A-Za-z0-9]{32,120})\b/.exec(text)
     if (matched) return matched[1]
   }
   return ''
