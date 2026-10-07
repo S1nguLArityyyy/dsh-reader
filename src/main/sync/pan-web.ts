@@ -194,6 +194,10 @@ export class PanWebProvider implements CloudProvider {
     let prefix = ''
     for (const segment of segments) {
       prefix = `${prefix}/${segment}`
+      // ★ 先查再建：百度对"已存在的目录"会**自动改名**（/DshReader_20261007_194607），
+      //   而不是返回 -8，所以必须自己判存在，否则每次同步都堆一个新文件夹
+      const existing = await this.stat(prefix).catch(() => null)
+      if (existing) continue
       const { status, text } = await this.postForm('/api/create?a=commit', {
         path: prefix,
         isdir: '1',
