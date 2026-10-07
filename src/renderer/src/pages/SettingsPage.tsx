@@ -599,6 +599,18 @@ export function SettingsPage() {
 
           <div className="setting-row">
             <div>
+              <div className="setting-label">连接测试</div>
+              <div className="setting-desc">
+                用当前保存的地址与账号真发一次 WebDAV 请求，确认到底通不通（不传文件、不改任何数据）
+              </div>
+            </div>
+            <div className="setting-control">
+              <WebDavTestButton />
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
               <div className="setting-label">立即操作</div>
               <div className="setting-desc">打开同步状态面板，查看任务、进度与冲突</div>
             </div>
@@ -748,6 +760,55 @@ export function SettingsPage() {
           </div>
         </section>
       </div>
+    </div>
+  )
+}
+
+/**
+ * WebDAV 连接测试按钮。
+ *
+ * 复用主进程已有的 sync:connect —— 它对 WebDAV 就是"用已保存的信息验证一句能不能通"，
+ * 不传文件、不改数据，所以可以安全地反复点。
+ * 写成独立小组件：自带 state，不干扰设置页本身的 hooks。
+ */
+function WebDavTestButton() {
+  const [phase, setPhase] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
+  const [message, setMessage] = useState('')
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+      <button
+        className="btn btn-ghost btn-sm"
+        disabled={phase === 'testing'}
+        onClick={() => {
+          setPhase('testing')
+          setMessage('测试中…')
+          void window.api.sync
+            .connect()
+            .then((next) => {
+              setPhase(next.loggedIn ? 'ok' : 'fail')
+              setMessage(next.message ?? (next.loggedIn ? '连接成功' : '连接失败'))
+            })
+            .catch((error: unknown) => {
+              setPhase('fail')
+              setMessage(error instanceof Error ? error.message : String(error))
+            })
+        }}
+      >
+        {phase === 'testing' ? '测试中…' : '测试连接'}
+      </button>
+      {message ? (
+        <span
+          style={{
+            fontSize: 12,
+            maxWidth: 260,
+            textAlign: 'right',
+            color: phase === 'ok' ? '#2fa36b' : phase === 'fail' ? '#d9534f' : 'var(--text-3)'
+          }}
+        >
+          {message}
+        </span>
+      ) : null}
     </div>
   )
 }
