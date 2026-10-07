@@ -56,6 +56,18 @@ export class BaiduOpenProvider implements CloudProvider {
     return `/apps/${name}`
   }
 
+  /**
+   * 把引擎给的云端路径重定向到应用专属目录下。
+   *
+   * 引擎用的是设置里的 remoteDir（如 /DshReader，带前导斜杠）✗
+   * 但开放平台应用**只能**在 /apps/<应用名>/ 里读写 ✓
+   * → 所有路径统一加这个前缀（幂等：已经在 /apps/… 下的原样返回 ✓）
+   */
+  private full(path: string): string {
+    const target = this.full(path)
+    if (target.startsWith(this.root())) return target
+    return normalizeCloudPath(`${this.root()}${target === '/' ? '' : target}`)
+  }
   private tokenFile(): string {
     return join(app.getPath('userData'), 'baidu-token.json')
   }
@@ -216,7 +228,7 @@ export class BaiduOpenProvider implements CloudProvider {
   }
 
   async stat(path: string): Promise<CloudEntry | null> {
-    const target = normalizeCloudPath(path)
+    const target = this.full(path)
     const parent = normalizeCloudPath(target.split('/').slice(0, -1).join('/') || '/')
     const name = target.split('/').filter(Boolean).pop() ?? ''
     const entries = await this.list(parent).catch(() => [])
@@ -228,7 +240,7 @@ export class BaiduOpenProvider implements CloudProvider {
   /** 逐级建目录（xpan create）。先查再建：百度对已存在目录会自动改名，不能盲目建 */
   async ensureDir(path: string): Promise<void> {
     const token = await this.accessToken()
-    const target = normalizeCloudPath(path)
+    const target = this.full(path)
     const segments = target.split('/').filter(Boolean)
     if (segments.length === 0) return
     let prefix = ''
@@ -255,7 +267,7 @@ export class BaiduOpenProvider implements CloudProvider {
   /** 用目录列表拿到文件的 fs_id（xpan 的 filemetas 需要它，而不是路径） */
   private async fsidOf(path: string): Promise<string> {
     const token = await this.accessToken()
-    const target = normalizeCloudPath(path)
+    const target = this.full(path)
     const parent = normalizeCloudPath(target.split('/').slice(0, -1).join('/') || '/')
     const name = target.split('/').filter(Boolean).pop() ?? ''
     const body = await this.call<{ errno?: number; list?: Array<Record<string, unknown>> }>(
@@ -298,7 +310,7 @@ export class BaiduOpenProvider implements CloudProvider {
    */
   async write(path: string, data: Buffer): Promise<void> {
     const token = await this.accessToken()
-    const target = normalizeCloudPath(path)
+    const target = this.full(path)
     const dir = normalizeCloudPath(target.split('/').slice(0, -1).join('/') || '/')
     await this.ensureDir(dir)
     const size = data.byteLength
