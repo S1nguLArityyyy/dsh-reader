@@ -98,6 +98,8 @@ export interface SyncSettings {
   webdav: { url: string; username: string }
   /** 自动同步开关 */
   auto: boolean
+  /** 退出阅读（合上书）时立刻同步一次：进度与阅读时长 */
+  onReaderClose: boolean
   intervalMinutes: number
   /** 网盘中的同步文件夹 */
   remoteDir: string

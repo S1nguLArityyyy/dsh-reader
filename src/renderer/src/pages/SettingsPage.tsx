@@ -489,10 +489,26 @@ export function SettingsPage() {
           <div className="setting-row">
             <div>
               <div className="setting-label">自动同步</div>
-              <div className="setting-desc">启动后、退出前各同步一次，并按间隔定时同步</div>
+              <div className="setting-desc">启动后同步一次，并按间隔定时同步</div>
             </div>
             <div className="setting-control">
               <Switch checked={syncSettings.auto} onChange={(v) => patchSync({ auto: v })} />
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">退出阅读时同步</div>
+              <div className="setting-desc">
+                合上书立刻把进度与阅读时长推上云端；退出应用前也会同步一次。
+                网络失败不影响阅读，下次会自动补上
+              </div>
+            </div>
+            <div className="setting-control">
+              <Switch
+                checked={syncSettings.onReaderClose}
+                onChange={(v) => patchSync({ onReaderClose: v })}
+              />
             </div>
           </div>
 

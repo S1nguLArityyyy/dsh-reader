@@ -312,6 +312,48 @@ check(
   `A=${secondsOf(a.store)} B=${secondsOf(b.store)}`
 )
 
+/* ---------- 10. 退出阅读触发的后台同步 ---------- */
+console.log('\n[10] 退出阅读 / 后台自动同步')
+// 关掉开关：合上书不应该触发同步（门槛在 afterReading 上）
+a.store.settings.sync.onReaderClose = false
+advance(60_000)
+setProgress(a.store, a1.id, 0.61, now())
+syncA.afterReading()
+await new Promise((resolve) => setTimeout(resolve, 1800))
+check(
+  '设置里关掉后，合上书不会触发同步',
+  cloudProgressByKey().get(syncKeyOf(a1))?.percent !== 0.61,
+  `云端仍是 ${cloudProgressByKey().get(syncKeyOf(a1))?.percent}`
+)
+a.store.settings.sync.onReaderClose = true
+
+advance(60_000)
+setProgress(a.store, a1.id, 0.66, now())
+const background = await syncA.runInBackground()
+check(
+  '后台同步把新进度推上云端',
+  background !== null &&
+    background.tasks.some((task) => task.kind === 'progress' && task.direction === 'up' && task.status === 'done'),
+  background?.message ?? '未执行'
+)
+check('云端进度确实更新了', cloudProgressByKey().get(syncKeyOf(a1))?.percent === 0.66)
+
+const throttled = await syncA.runInBackground()
+check('短时间内重复触发被节流（不会每个动作都去打网盘）', throttled === null)
+
+// afterReading 是延迟触发：先返回，等 1.2 秒才真正同步（等渲染进程把最后一条进度发过来）
+advance(60_000)
+setProgress(a.store, a1.id, 0.7, now())
+syncA.afterReading()
+await new Promise((resolve) => setTimeout(resolve, 1800))
+check(
+  '退出阅读后的延迟同步确实跑了',
+  cloudProgressByKey().get(syncKeyOf(a1))?.percent === 0.7,
+  `${cloudProgressByKey().get(syncKeyOf(a1))?.percent}`
+)
+
+check('已配置云端时 isConfigured() 为真（自动同步靠它判断）', syncA.isConfigured())
+
 writeFileSync(join(workDir, 'check-ok.txt'), new Date().toISOString(), 'utf8')
 
 console.log(`\n${failures === 0 ? '✅ 同步链路全部通过' : `❌ ${failures} 项未通过`}`)

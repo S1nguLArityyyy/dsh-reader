@@ -222,6 +222,7 @@ const settings: Settings = {
     localCloudDir: 'D:/demo/云端同步目录',
     webdav: { url: '', username: '' },
     auto: false,
+    onReaderClose: true,
     intervalMinutes: 10,
     remoteDir: '/DshReader',
     conflictPolicy: 'ask',

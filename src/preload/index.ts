@@ -84,6 +84,8 @@ const api = {
       invoke<SyncState>('sync:configureWebdav', payload),
     /** 退出登录：清掉已保存的应用密码 */
     logout: () => invoke<SyncState>('sync:logout'),
+    /** 退出阅读时通知主进程顺手同步一次（不等待结果） */
+    afterReading: () => invoke<void>('sync:afterReading'),
     /** 同步跑完（含自动同步）后主进程会通知刷新：进度 / 今日阅读 / 统计都可能变了 */
     onChanged: (callback: () => void) => {
       const listener = (): void => callback()

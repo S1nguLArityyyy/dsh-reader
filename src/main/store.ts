@@ -77,6 +77,7 @@ export class Store {
         localCloudDir: null,
         webdav: { url: '', username: '' },
         auto: false,
+        onReaderClose: true,
         intervalMinutes: 10,
         remoteDir: '/DshReader',
         conflictPolicy: 'ask',

@@ -194,7 +194,7 @@ async function bootstrap(): Promise<void> {
   })
 
   // 自动同步：启动后先来一次，之后按设置的间隔由定时器触发
-  if (localStore.settings.sync.auto && localStore.settings.sync.localCloudDir) {
+  if (localStore.settings.sync.auto && syncService.isConfigured()) {
     lastAutoSyncAt = Date.now()
     setTimeout(() => void syncService?.run(), 3000)
   }
@@ -211,7 +211,7 @@ function startAutoSync(): void {
   const timer = setInterval(() => {
     if (!store || !syncService) return
     const config = store.settings.sync
-    if (!config.auto || !config.localCloudDir) return
+    if (!config.auto || !syncService.isConfigured()) return
     const intervalMs = Math.max(1, config.intervalMinutes) * 60_000
     if (Date.now() - lastAutoSyncAt < intervalMs) return
     lastAutoSyncAt = Date.now()
@@ -280,9 +280,8 @@ app.on('before-quit', (event) => {
       .finally(() => app.quit())
   }
 
-  // 退出前同步一次（最多等 3 秒，绝不拖住退出）
-  const config = localStore.settings.sync
-  if (syncService && config.auto && config.localCloudDir) {
+  // 退出前同步一次（已连接云端就做，最多等 3 秒，绝不拖住退出）
+  if (syncService && syncService.isConfigured()) {
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000))
     void Promise.race([syncService.run().then(() => undefined), timeout])
       .catch((err) => log('[quit] 退出前同步失败', err))

@@ -254,6 +254,8 @@ export function registerIpc(store: Store, sync: SyncService): void {
   handle('sync:resolve', (items: ConflictItem[], choice: 'local' | 'cloud') => sync.resolve(items, choice))
   handle('sync:configureWebdav', (payload: WebDavConnectPayload) => sync.configureWebdav(payload))
   handle('sync:logout', () => sync.logout())
+  /** 退出阅读时顺手同步（主进程延迟一点点再跑，不阻塞界面） */
+  handle('sync:afterReading', () => sync.afterReading())
 
   /* ---------------- 系统 ---------------- */
 

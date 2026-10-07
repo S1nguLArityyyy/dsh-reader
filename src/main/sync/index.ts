@@ -47,6 +47,12 @@ async function chooseDirectoryDialog(): Promise<string | null> {
   return result.filePaths[0]
 }
 
+/** 后台同步的最小间隔：连续开关书不应该每次都去打网盘 */
+const BACKGROUND_MIN_INTERVAL_MS = 3000
+
+/** 合上书后等多久再同步：留给渲染进程把最后一条进度/计时发过来 */
+const AFTER_READING_DELAY_MS = 1200
+
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
@@ -71,6 +77,9 @@ export class SyncService {
   private readonly onChanged?: () => void
   /** 按类型缓存 provider 实例（切换云端类型时各自独立） */
   private readonly providers = new Map<string, CloudProvider>()
+  /** 后台同步（退出阅读等静默触发）的节流时间戳 */
+  private lastBackgroundAt = 0
+  private readerTimer: NodeJS.Timeout | null = null
 
   constructor(store: Store, options: SyncServiceOptions = {}) {
     this.store = store
@@ -142,6 +151,20 @@ export class SyncService {
     return { ...this.state, loggedIn: Boolean(account), account: account ? account.name : null }
   }
 
+  /**
+   * 是否已经配置好云端（同步判断，不查网络）。
+   * 自动同步（启动 / 定时 / 退出前）用它判断该不该动手 —— 注意不能再看
+   * settings.sync.localCloudDir：那只对本地文件夹 provider 有意义，
+   * 用 WebDAV 时它是 null，会让自动同步被静默跳过。
+   */
+  isConfigured(): boolean {
+    const sync = this.store.settings.sync
+    if (sync.provider === 'webdav') {
+      return Boolean(sync.webdav?.url?.trim() && sync.webdav?.username?.trim() && this.secrets.load())
+    }
+    return Boolean(sync.localCloudDir)
+  }
+
   pendingConflicts(): ConflictItem[] {
     return this.conflicts
   }
@@ -187,6 +210,41 @@ export class SyncService {
     this.conflicts = result.conflicts
     this.notifyChanged()
     return this.status()
+  }
+
+  /**
+   * 退出阅读（合上书）时调用：稍等片刻再同步一次。
+   *
+   * 为什么要等：渲染进程是在卸载时才把最后一条进度与阅读时长发给主进程的
+   * （`ReaderPage` 的 effect 清理函数），抢在那之前同步会漏掉最后几秒。
+   * 等 1.2 秒既能把它们带上，又完全不影响退出阅读的手感（界面已经切回书库了）。
+   */
+  afterReading(): void {
+    if (!this.store.settings.sync.onReaderClose) return
+    if (this.readerTimer) clearTimeout(this.readerTimer)
+    this.readerTimer = setTimeout(() => {
+      this.readerTimer = null
+      void this.runInBackground()
+    }, AFTER_READING_DELAY_MS)
+  }
+
+  /**
+   * 后台同步：不打断界面，失败只记日志（下次定时 / 退出应用时会补上，不会丢）。
+   * 正在同步或被节流时返回 null。
+   */
+  async runInBackground(): Promise<SyncState | null> {
+    const now = this.options.now ? this.options.now() : Date.now()
+    if (now - this.lastBackgroundAt < BACKGROUND_MIN_INTERVAL_MS) return null
+    this.lastBackgroundAt = now
+    try {
+      const result = await this.engine.run()
+      this.conflicts = result.conflicts
+      this.notifyChanged()
+      return await this.status()
+    } catch (err) {
+      this.options.log?.(`[sync] 后台同步失败：${messageOf(err)}`)
+      return null
+    }
   }
 
   /**

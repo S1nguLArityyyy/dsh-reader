@@ -474,6 +474,8 @@ export const useApp = create<AppStore>((set, get) => ({
   closeReader() {
     set({ route: 'library', reader: { ...emptyReader } })
     void get().refreshAll()
+    // 合上书顺手同步一次（主进程会稍等片刻，让卸载时刷下的最后一条进度先落到本地）
+    void window.api.sync.afterReading()
   },
 
   async goToChapter(index) {
