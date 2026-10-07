@@ -265,7 +265,7 @@
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: linear-gradient(135deg, #4c86e8, #2f63cf);
+  background: #fff; /* 蓝底 → 白底 ✓（用户要求 ✓） */
   display: grid;
   place-items: center;
   color: #fff;
