@@ -19,6 +19,8 @@ import { basename, extname, join, normalize } from 'node:path'
 export interface LanServerOptions {
   /** 书籍目录（电脑本地书库） */
   booksDir: string
+  /** 取某本书的主色（桌面端算好的 ✓ 手机端直接沿用 ✓ 两端一致 ✓） */
+  colorOf?: (fileName: string) => string | null
   /** 写入地址信息的文件（可选） */
   infoFile?: string
   port?: number
@@ -63,7 +65,12 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
           const items = []
           for (const name of names) {
             const info = await stat(join(booksDir, name)).catch(() => null)
-            items.push({ name, size: info?.size ?? 0, modifiedAt: info?.mtimeMs ?? 0 })
+            items.push({
+              name,
+              size: info?.size ?? 0,
+              modifiedAt: info?.mtimeMs ?? 0,
+              color: options.colorOf?.(name) ?? null
+            })
           }
           const body = JSON.stringify({ count: items.length, books: items })
           res.writeHead(200, {
