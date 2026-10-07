@@ -24,6 +24,7 @@ export function SyncStatusModal() {
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [lastProgress, setLastProgress] = useState({ at: 0, bytes: 0 })
   const [speed, setSpeed] = useState(0)
+  const [activeSince, setActiveSince] = useState<number | null>(null)
 
   useEffect(() => {
     if (!busy) {
@@ -50,8 +51,13 @@ export function SyncStatusModal() {
 
   const elapsedSec = startedAt ? Math.max(0, Math.floor((nowTick - startedAt) / 1000)) : 0
   const elapsedText = elapsedSec >= 60 ? `${Math.floor(elapsedSec / 60)} 分 ${elapsedSec % 60} 秒` : `${elapsedSec} 秒`
-  const stalled = busy && lastProgress.at > 0 && nowTick - lastProgress.at > 30000 && speed === 0
+  const stalled = busy && lastProgress.at > 0 && nowTick - lastProgress.at > 180000 && speed === 0
   const recent = sync.tasks.slice(-6).reverse()
+  const activeId = active ? active.id : null
+  useEffect(() => {
+    setActiveSince(activeId ? Date.now() : null)
+  }, [activeId])
+  const activeSec = activeSince ? Math.max(0, Math.floor((nowTick - activeSince) / 1000)) : 0
   const percent = total > 0 ? done / total : busy ? 0.05 : 0
 
   const label = active
@@ -88,7 +94,7 @@ export function SyncStatusModal() {
 
         {busy || elapsedSec > 0 ? (
           <div className="sync-line" style={{ marginTop: 12 }}>
-            <span>已用时：{elapsedText}</span>
+            <span>已用时：{elapsedText}{active ? `（当前：${activeSec} 秒）` : ""}</span>
             <span className="sync-size">{speed > 0 ? `${fileSizeText(speed)}/s` : "—"}</span>
           </div>
         ) : null}
