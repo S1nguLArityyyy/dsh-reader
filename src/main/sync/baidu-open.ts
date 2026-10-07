@@ -13,6 +13,7 @@
  */
 
 import { app, BrowserWindow } from 'electron'
+import { createHash } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
@@ -289,8 +290,67 @@ export class BaiduOpenProvider implements CloudProvider {
     return Buffer.from(await response.arrayBuffer())
   }
 
-  async write(): Promise<void> {
-    throw new Error('百度开放平台上传属下一步实现')
+  /**
+   * 上传（开放平台版的三步，与网页会话版同一套流程，只是把 cookie 换成 access_token）：
+   *   ① precreate → uploadid
+   *   ② superfile2 逐片 4MB
+   *   ③ create?a=commit → 落盘
+   */
+  async write(path: string, data: Buffer): Promise<void> {
+    const token = await this.accessToken()
+    const target = normalizeCloudPath(path)
+    const dir = normalizeCloudPath(target.split('/').slice(0, -1).join('/') || '/')
+    await this.ensureDir(dir)
+    const size = data.byteLength
+    const CHUNK = 4 * 1024 * 1024
+    const parts: Buffer[] = []
+    for (let offset = 0; offset < Math.max(size, 1); offset += CHUNK) {
+      parts.push(data.subarray(offset, Math.min(offset + CHUNK, size)))
+    }
+    const blockList = parts.map((part) => createHash('md5').update(part).digest('hex'))
+    const pre = await this.call<{ errno?: number; uploadid?: string }>(`${XPAN}/file?method=precreate`, {
+      method: 'POST',
+      body: new URLSearchParams({
+        path: target,
+        size: String(size),
+        isdir: '0',
+        autoinit: '1',
+        rtype: '3',
+        block_list: JSON.stringify(blockList),
+        access_token: token
+      }).toString()
+    })
+    if (pre.errno !== 0 || !pre.uploadid) {
+      throw new Error(`上传失败（precreate errno ${pre.errno}）：${target}`)
+    }
+    for (let index = 0; index < parts.length; index += 1) {
+      const url =
+        `https://d.pcs.baidu.com/rest/2.0/pcs/superfile2?method=upload&type=tmpfile` +
+        `&path=${encodeURIComponent(target)}&uploadid=${encodeURIComponent(pre.uploadid)}` +
+        `&partseq=${index}&access_token=${encodeURIComponent(token)}`
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: parts[index]
+      })
+      this.options.log?.(`[baidu] POST upload ${target} 片${index + 1}/${parts.length} → HTTP ${response.status}`)
+      if (!response.ok) throw new Error(`上传失败（分片 ${index + 1} HTTP ${response.status}）`)
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    }
+    const done = await this.call<{ errno?: number }>(`${XPAN}/file?method=create`, {
+      method: 'POST',
+      body: new URLSearchParams({
+        path: target,
+        size: String(size),
+        isdir: '0',
+        uploadid: pre.uploadid,
+        block_list: JSON.stringify(blockList),
+        access_token: token
+      }).toString()
+    })
+    if (done.errno !== 0 && done.errno !== -8) {
+      throw new Error(`上传失败（create errno ${done.errno}）：${target}`)
+    }
   }
 
   async remove(): Promise<void> {
