@@ -52,6 +52,8 @@ const api = {
     importPaths: (paths: string[]) => invoke<ImportResult>('library:importPaths', paths),
     remove: (id: string, deleteFile: boolean) => invoke<Book[]>('library:remove', id, deleteFile),
     update: (id: string, patch: Partial<Book>) => invoke<Book[]>('library:update', id, patch),
+    /** 批量标记「同步到云端」 */
+    markSyncUpload: (value: boolean) => invoke<Book[]>('library:markSyncUpload', value),
     reveal: (id: string) => invoke<boolean>('library:reveal', id),
     /** 后台补齐书籍信息后主进程会通知刷新 */
     onChanged: (callback: () => void) => {

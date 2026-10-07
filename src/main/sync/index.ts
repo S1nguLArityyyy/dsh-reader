@@ -28,6 +28,8 @@ export interface SyncServiceOptions {
   fetch?: (input: string, init?: RequestInit) => Promise<Response>
   /** 应用密码的存放；默认加密存到 <数据目录>/sync/webdav-secret.json */
   secretStore?: SecretStore
+  /** 单本书同步的大小上限（默认 100MB） */
+  maxBookBytes?: number
 }
 
 export interface WebDavConnectPayload {
@@ -94,6 +96,7 @@ export class SyncService {
       remoteDir: () => this.store.settings.sync.remoteDir || '/DshReader',
       conflictPolicy: () => this.store.settings.sync.conflictPolicy,
       appVersion: app.getVersion(),
+      maxBookBytes: options.maxBookBytes,
       now: options.now,
       log: options.log,
       onState: (state) => {
@@ -196,9 +199,9 @@ export class SyncService {
     return this.status()
   }
 
-  /** 全部下载：忽略冲突判定，一律以云端为准 */
+  /** 全部下载云端书籍（进度一律以云端为准；把云端有、本机没有的书拉下来入册） */
   async downloadAll(): Promise<SyncState> {
-    const result = await this.engine.run({ preferCloud: true })
+    const result = await this.engine.run({ preferCloud: true, downloadBooks: true })
     this.conflicts = []
     this.notifyChanged()
     return this.status()

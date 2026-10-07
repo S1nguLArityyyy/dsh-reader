@@ -167,6 +167,7 @@ interface AppStore {
   removeBook: (id: string, deleteFile: boolean) => Promise<void>
   updateBook: (id: string, patch: Partial<Book>) => Promise<void>
   saveSettings: (patch: Partial<Settings>) => Promise<void>
+  markAllSyncUpload: (value: boolean) => Promise<void>
 
   openReader: (bookId: string) => Promise<void>
   closeReader: () => void
@@ -357,6 +358,16 @@ export const useApp = create<AppStore>((set, get) => ({
     for (const id of ids) await window.api.library.update(id, { manualSeries: name })
     await get().loadBooks()
     get().toast('success', name ? `已归入合集「${name}」` : '已移出合集')
+  },
+
+  async markAllSyncUpload(value) {
+    try {
+      await window.api.library.markSyncUpload(value)
+      await get().loadBooks()
+      get().toast('info', value ? '已把全部书籍标为「同步到云端」' : '已取消全部书籍的云端同步标记')
+    } catch (err) {
+      get().toast('error', errorText(err))
+    }
   },
 
   async loadBooks() {

@@ -104,8 +104,10 @@ export interface SyncSettings {
   /** 网盘中的同步文件夹 */
   remoteDir: string
   conflictPolicy: 'ask' | 'local' | 'cloud'
-  /** 是否同步书籍文件本体（按需上传策略，默认关闭） */
+  /** 书籍本体同步总开关（默认关；打开后按每本书的 Book.syncUpload 勾选上传） */
   uploadBooks: boolean
+  /** 云端出现本机没有的书时自动下载（默认关，避免悄悄吃流量） */
+  autoDownloadBooks: boolean
 }
 
 export interface AppearanceSettings {

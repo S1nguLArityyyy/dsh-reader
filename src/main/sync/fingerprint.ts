@@ -36,8 +36,12 @@ export function sha1File(path: string): Promise<string> {
   })
 }
 
-export interface FingerprintResult {
-  /** 本次算出指纹的数量 */
+/** 计算一段内存数据的 sha1：从云端下载书籍后校验完整性用 */
+export function sha1Buffer(data: Buffer): string {
+  return createHash('sha1').update(data).digest('hex')
+}
+
+export interface FingerprintResult {  /** 本次算出指纹的数量 */
   computed: number
   /** 已经有指纹、无需重算的数量 */
   cached: number

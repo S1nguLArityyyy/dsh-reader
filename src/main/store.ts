@@ -81,7 +81,8 @@ export class Store {
         intervalMinutes: 10,
         remoteDir: '/DshReader',
         conflictPolicy: 'ask',
-        uploadBooks: false
+        uploadBooks: false,
+        autoDownloadBooks: false
       },
       appearance: {
         accent: '#3b6fd4',

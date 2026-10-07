@@ -16,26 +16,35 @@ async function uniqueBookFile(store: Store, id: string): Promise<string> {
   return join(store.booksDir, `${id}.epub`)
 }
 
-/** 导入单个 EPUB：复制进书库 -> 解析元数据 -> 抽封面 -> 落库 */
-export async function importEpubFile(store: Store, sourcePath: string): Promise<Book> {
-  const info = await stat(sourcePath)
-  if (!info.isFile()) throw new Error('不是文件')
-  if (extname(sourcePath).toLowerCase() !== '.epub') throw new Error('当前版本仅支持 EPUB 格式')
+export interface EnrollOptions {
+  /** 书库内的 id（落盘文件名与封面文件名都用它）；缺省自动生成 */
+  id?: string
+  /** 展示用的原始文件名，书名以它为准；缺省用落盘文件名 */
+  originalName?: string
+  /** 已知的内容指纹（从云端下载时云端键就是指纹）；传 null 表示"算不出来"，缺省则现算 */
+  contentHash?: string | null
+  /** 已知文件大小；缺省则 stat */
+  fileSize?: number
+}
 
-  const id = randomUUID()
-  const destPath = await uniqueBookFile(store, id)
-  await mkdir(store.booksDir, { recursive: true })
-  await copyFile(sourcePath, destPath)
+/**
+ * 把「已经在 books/ 目录里」的 EPUB 登记进书库：解析元数据 -> 抽封面 -> 统计每章字数。
+ *
+ * 导入（先复制再登记）与「从云端下载」（直接落盘再登记）共用这一条管线，
+ * 区别只是文件从哪来；下载那条路已知指纹，省掉一次哈希。
+ */
+export async function enrollEpubFile(
+  store: Store,
+  destPath: string,
+  options: EnrollOptions = {}
+): Promise<Book> {
+  const info = await stat(destPath)
+  const id = options.id ?? randomUUID()
+  const originalName = options.originalName ?? basename(destPath)
 
-  let meta: EpubMeta
-  try {
-    meta = await readEpubMeta(destPath)
-  } catch (err) {
-    await rm(destPath, { force: true })
-    throw err
-  }
+  const meta = await readEpubMeta(destPath)
 
-  const fallbackTitle = basename(sourcePath, extname(sourcePath))
+  const fallbackTitle = basename(originalName, extname(originalName))
   const metaTitle = (meta.title || '').trim()
   // 书名以文件名为准，内部书名仅作回退
   const title = titleFromFileName(fallbackTitle, metaTitle)
@@ -49,7 +58,8 @@ export async function importEpubFile(store: Store, sourcePath: string): Promise<
   }
 
   // 内容指纹：跨设备同步时用来对齐「同一本书」；算不出来也不影响导入
-  const contentHash = await sha1File(destPath).catch(() => null)
+  const contentHash =
+    options.contentHash !== undefined ? options.contentHash : await sha1File(destPath).catch(() => null)
 
   const book: Book = {
     id,
@@ -58,9 +68,9 @@ export async function importEpubFile(store: Store, sourcePath: string): Promise<
     author,
     description: meta.description,
     format: 'epub',
-    fileName: basename(sourcePath),
+    fileName: basename(originalName),
     filePath: destPath,
-    fileSize: info.size,
+    fileSize: options.fileSize ?? info.size,
     contentHash,
     coverFile,
     coverColor: coverColorOf(coverFile),
@@ -82,6 +92,30 @@ export async function importEpubFile(store: Store, sourcePath: string): Promise<
   store.books.push(book)
   store.save('library')
   return book
+}
+
+/** 导入单个 EPUB：复制进书库 -> 解析元数据 -> 抽封面 -> 落库 */
+export async function importEpubFile(store: Store, sourcePath: string): Promise<Book> {
+  const info = await stat(sourcePath)
+  if (!info.isFile()) throw new Error('不是文件')
+  if (extname(sourcePath).toLowerCase() !== '.epub') throw new Error('当前版本仅支持 EPUB 格式')
+
+  const id = randomUUID()
+  const destPath = await uniqueBookFile(store, id)
+  await mkdir(store.booksDir, { recursive: true })
+  await copyFile(sourcePath, destPath)
+
+  try {
+    return await enrollEpubFile(store, destPath, {
+      id,
+      originalName: sourcePath,
+      fileSize: info.size
+    })
+  } catch (err) {
+    // 解析失败就把刚复制进来的那份删掉，别在 books/ 里留垃圾
+    await rm(destPath, { force: true })
+    throw err
+  }
 }
 
 /** 补齐封面主色、每章字数、总字数（导入时同步做，旧书由启动后的后台任务补） */

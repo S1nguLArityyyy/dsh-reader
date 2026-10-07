@@ -31,6 +31,7 @@ export function SettingsPage() {
   const connectSync = useApp((s) => s.connectSync)
   const configureWebdav = useApp((s) => s.configureWebdav)
   const logoutSync = useApp((s) => s.logoutSync)
+  const markAllSyncUpload = useApp((s) => s.markAllSyncUpload)
   const toast = useApp((s) => s.toast)
 
   const [nameDraft, setNameDraft] = useState<string | null>(null)
@@ -555,11 +556,44 @@ export function SettingsPage() {
             <div>
               <div className="setting-label">同步书籍文件</div>
               <div className="setting-desc">
-                当前版本只同步阅读进度。书籍本体上传（按 Book.syncUpload 逐本控制）尚未接入
+                打开后，书库里勾了「同步到云端」的书会在同步时上传（单本上限 100MB）。
+                云端已有同一份会跳过，不会重复传
               </div>
             </div>
             <div className="setting-control">
               <Switch checked={syncSettings.uploadBooks} onChange={(v) => patchSync({ uploadBooks: v })} />
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">自动下载云端新书</div>
+              <div className="setting-desc">
+                关着的时候只提示「云端有 N 本可下载」，由你在同步面板点「全部下载云端书籍」
+              </div>
+            </div>
+            <div className="setting-control">
+              <Switch
+                checked={syncSettings.autoDownloadBooks}
+                onChange={(v) => patchSync({ autoDownloadBooks: v })}
+              />
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">批量标记</div>
+              <div className="setting-desc">
+                一次把书库里所有书标成「同步到云端」或取消（只改本机标记，不动云端已有的文件）
+              </div>
+            </div>
+            <div className="setting-control">
+              <button className="btn btn-ghost btn-sm" onClick={() => void markAllSyncUpload(true)}>
+                全部标记
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => void markAllSyncUpload(false)}>
+                全部取消
+              </button>
             </div>
           </div>
 

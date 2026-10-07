@@ -64,7 +64,7 @@ export function SyncStatusModal() {
 
       <button className="btn btn-ghost btn-block" onClick={() => void downloadAll()}>
         <CloudDownload size={15} />
-        全部下载
+        全部下载云端书籍
       </button>
 
       {!sync.loggedIn ? (

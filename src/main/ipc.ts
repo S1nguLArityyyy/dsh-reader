@@ -243,6 +243,17 @@ export function registerIpc(store: Store, sync: SyncService): void {
 
   handle('stats:get', (): StatsPayload => computeStats(store))
 
+  /* ---------------- 书库 ---------------- */
+
+  /** 批量标记「同步到云端」：省得一本一本点（不影响云端已有的文件） */
+  handle('library:markSyncUpload', (value: boolean) => {
+    for (const book of store.books) book.syncUpload = Boolean(value)
+    store.save('library', true)
+    return store.books
+  })
+
+
+
   /* ---------------- 网盘 / 云端同步 ---------------- */
 
   handle('sync:status', () => sync.status())

@@ -15,16 +15,22 @@
  *  - 冲突策略：ask 挂起等用户选，local / cloud 直接取舍。
  * 只有整轮没有挂起冲突时才推进「上次同步时间」，保证挂起期间判定窗口不变。
  */
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import type { Book, ConflictItem, Progress, SessionRow, SyncState, SyncTask } from '../../shared/types'
 import type { Store } from '../store'
-import { bookSyncKey, ensureContentHashes } from './fingerprint'
+import { enrollEpubFile } from '../library'
+import { bookSyncKey, ensureContentHashes, sha1Buffer } from './fingerprint'
 import { cloudFileName, cloudKeyFromFileName, joinCloudPath, type CloudProvider } from './provider'
 
-const SCHEMA = 1
+const SCHEMA = 2
 /** 百分比差异小于这个值就认为进度一致，避免浮点噪声触发无意义同步 */
 const PERCENT_EPSILON = 0.001
+/** 单本书同步的大小上限：超过就跳过并如实说明，别一次同步吃掉整个网盘额度 */
+const MAX_BOOK_BYTES = 100 * 1024 * 1024
+/** 「云端有 N 本可下载」那条提示任务的固定 id */
+const BOOKS_AVAILABLE_TASK = 'books-available'
 
 /** 云端 progress/<键>.json 的内容：Progress + 跨设备对齐用的键 */
 interface CloudProgress extends Progress {
@@ -68,11 +74,25 @@ interface ManifestBook {
   deviceName?: string
 }
 
+/** 云端已有的书籍文件（键 = 内容指纹） */
+interface ManifestFile {
+  title: string
+  author: string
+  size: number
+  ext: string
+  addedAt: number
+  deviceId: string
+}
+
 interface CloudManifest {
   schema: number
   updatedAt: number
   deviceId: string
-  books: Record<string, ManifestBook>
+  /** 进度条目；schema 1 时这个字段叫 books，读取时兼容 */
+  progress?: Record<string, ManifestBook>
+  books?: Record<string, ManifestBook>
+  /** 云端书籍文件清单 */
+  files?: Record<string, ManifestFile>
 }
 
 interface SyncMeta {
@@ -107,6 +127,8 @@ export interface SyncRunOptions {
   preferCloud?: boolean
   /** 冲突弹窗的选择：本轮按它取舍 */
   policyOverride?: 'local' | 'cloud'
+  /** 把云端有、本机没有的书籍下载下来（「全部下载云端书籍」按钮） */
+  downloadBooks?: boolean
 }
 
 export interface SyncEngineOptions {
@@ -117,6 +139,8 @@ export interface SyncEngineOptions {
   remoteDir: () => string
   conflictPolicy: () => 'ask' | 'local' | 'cloud'
   appVersion: string
+  /** 单本书同步的大小上限（默认 100MB）；测试里会调小 */
+  maxBookBytes?: number
   now?: () => number
   log?: (message: string) => void
   onState?: (state: SyncState) => void
@@ -237,7 +261,8 @@ export class SyncEngine {
       for (const key of keys) {
         const localSide = localByKey.get(key)
         const cloudSide = cloud.get(key) ?? null
-        const title = localSide?.book.title ?? manifest?.books?.[key]?.title ?? key.replace(/^[^:]*:/, '').slice(0, 24)
+        const title =
+          localSide?.book.title ?? this.manifestTitle(manifest, key) ?? key.replace(/^[^:]*:/, '').slice(0, 24)
 
         if (!localSide) {
           // 云端有这本书、本机书库没有：不凭空造书，如实跳过
@@ -336,8 +361,13 @@ export class SyncEngine {
       transferred += statsBytes
       total += statsBytes
 
-      /* 7) 云端清单与设备登记 */
-      await this.writeManifest(manifestPath, manifest, startedAt)
+      /* 7) 书籍文件本体：按需上传 / 「全部下载」时下载 */
+      const bookFiles = await this.syncBooks(remoteDir, manifest, tasks, options)
+      transferred += bookFiles.bytes
+      total += bookFiles.bytes
+
+      /* 8) 云端清单与设备登记 */
+      await this.writeManifest(manifestPath, manifest, startedAt, bookFiles.files)
       await this.writeDevice(devicesDir, startedAt)
 
       const base: Partial<SyncState> = {
@@ -457,6 +487,140 @@ export class SyncEngine {
     return `设备 ${deviceId.slice(0, 8)}`
   }
 
+  /**
+   * 书籍文件本体同步。
+   *
+   * 上传：总开关打开 + 这本书勾了「同步到云端」+ 云端没有同大小的文件 → 传上去。
+   * 下载：云端有、本机没有的书 —— 默认**只列出来**（不偷偷吃流量），
+   *       `options.downloadBooks`（「全部下载云端书籍」）或设置里的「自动下载云端新书」才真下。
+   * 安全：下载后必须用云端键里的 sha1 校验，不一致就丢弃 —— 绝不把坏文件当书入库。
+   */
+  private async syncBooks(
+    remoteDir: string,
+    manifest: CloudManifest | null,
+    tasks: SyncTask[],
+    options: SyncRunOptions
+  ): Promise<{ bytes: number; files: Record<string, ManifestFile> }> {
+    const store = this.store
+    const settings = store.settings.sync
+    const dir = joinCloudPath(remoteDir, 'books')
+    const maxBytes = this.options.maxBookBytes ?? MAX_BOOK_BYTES
+    const files: Record<string, ManifestFile> = { ...(manifest?.files ?? {}) }
+    let bytes = 0
+
+    // 云端现状以**列目录**为准：清单可能落后（比如别的设备刚传完还没写清单）
+    const cloud = new Map<string, { path: string; size: number }>()
+    for (const entry of await this.provider.list(dir)) {
+      if (entry.kind !== 'file' || !entry.name.toLowerCase().endsWith('.epub')) continue
+      cloud.set(cloudKeyFromFileName(entry.name, '.epub'), { path: entry.path, size: entry.size })
+    }
+
+    if (settings.uploadBooks) {
+      for (const book of store.books) {
+        if (!book.syncUpload || !book.contentHash) continue
+        const key = `sha1:${book.contentHash}`
+        const remote = cloud.get(key)
+        if (remote && remote.size === book.fileSize) continue // 云端已有同一份，不重传
+        if (book.fileSize > maxBytes) {
+          tasks.push(this.bookTask(book.id, book.title, 'up', 'skipped', 0))
+          this.options.log?.(`[sync]《${book.title}》超过单本上限，跳过上传`)
+          continue
+        }
+        try {
+          const data = await readFile(book.filePath)
+          await this.provider.write(joinCloudPath(dir, cloudFileName(key, '.epub')), data)
+          bytes += data.byteLength
+          files[key] = {
+            title: book.title,
+            author: book.author,
+            size: data.byteLength,
+            ext: 'epub',
+            addedAt: book.addedAt,
+            deviceId: store.settings.deviceId
+          }
+          tasks.push(this.bookTask(book.id, book.title, 'up', 'done', data.byteLength))
+        } catch (err) {
+          tasks.push(this.bookTask(book.id, book.title, 'up', 'error', book.fileSize))
+          this.options.log?.(`[sync]《${book.title}》上传失败：${String(err)}`)
+        }
+      }
+    }
+
+    const knownHashes = new Set(store.books.map((book) => book.contentHash).filter(Boolean) as string[])
+    const missing: Array<{ key: string; path: string; size: number; title: string }> = []
+    for (const [key, entry] of cloud) {
+      const hash = key.startsWith('sha1:') ? key.slice('sha1:'.length) : ''
+      if (!hash || knownHashes.has(hash)) continue
+      missing.push({ key, path: entry.path, size: entry.size, title: files[key]?.title ?? hash.slice(0, 8) })
+    }
+    if (missing.length === 0) return { bytes, files }
+
+    const wanted = options.downloadBooks ? missing : missing.filter(() => settings.autoDownloadBooks)
+    const listed = missing.length - wanted.length
+    if (listed > 0) {
+      tasks.push({
+        id: BOOKS_AVAILABLE_TASK,
+        kind: 'book',
+        bookId: '',
+        title: `云端有 ${listed} 本可下载的书 · 打开同步面板点「全部下载云端书籍」`,
+        direction: 'down',
+        total: listed,
+        done: 0,
+        status: 'skipped'
+      })
+    }
+
+    for (const item of wanted) {
+      if (item.size > maxBytes) {
+        tasks.push(this.bookTask(item.title, item.title, 'down', 'skipped', 0))
+        this.options.log?.(`[sync]《${item.title}》超过单本上限，跳过下载`)
+        continue
+      }
+      const destPath = join(store.booksDir, `${randomUUID()}.epub`)
+      try {
+        const data = await this.provider.read(item.path)
+        if (!data) throw new Error('云端文件读不到')
+        const hash = sha1Buffer(data)
+        if (`sha1:${hash}` !== item.key) throw new Error('内容校验不通过（文件可能损坏），已丢弃')
+        await mkdir(store.booksDir, { recursive: true })
+        await writeFile(destPath, data)
+        const book = await enrollEpubFile(store, destPath, {
+          id: basename(destPath, '.epub'),
+          originalName: `${item.title}.epub`,
+          contentHash: hash,
+          fileSize: data.byteLength
+        })
+        bytes += data.byteLength
+        tasks.push(this.bookTask(book.id, book.title, 'down', 'done', data.byteLength))
+      } catch (err) {
+        await rm(destPath, { force: true }).catch(() => undefined)
+        tasks.push(this.bookTask(item.title, item.title, 'down', 'error', item.size))
+        this.options.log?.(`[sync]《${item.title}》下载失败：${String(err)}`)
+      }
+    }
+
+    return { bytes, files }
+  }
+
+  private bookTask(
+    bookId: string,
+    title: string,
+    direction: SyncTask['direction'],
+    status: SyncTask['status'],
+    size: number
+  ): SyncTask {
+    return {
+      id: `book:${bookId}:${direction}`,
+      kind: 'book',
+      bookId,
+      title,
+      direction,
+      total: size,
+      done: status === 'done' ? size : 0,
+      status
+    }
+  }
+
   private summarize(tasks: SyncTask[]): string {
     const done = (direction: SyncTask['direction'], kind: SyncTask['kind']): number =>
       tasks.filter(
@@ -465,14 +629,23 @@ export class SyncEngine {
     const up = done('up', 'progress')
     const down = done('down', 'progress')
     const stats = done('up', 'stats') + done('down', 'stats')
-    const skipped = tasks.filter((task) => task.status === 'skipped').length
+    const booksUp = done('up', 'book')
+    const booksDown = done('down', 'book')
+    const available = tasks.find((task) => task.id === BOOKS_AVAILABLE_TASK)?.total ?? 0
+    // 「云端有 N 本可下载」那条只是提示，不算"跳过"
+    const skipped = tasks.filter(
+      (task) => task.status === 'skipped' && task.id !== BOOKS_AVAILABLE_TASK
+    ).length
     const failed = tasks.filter((task) => task.status === 'error').length
 
     const parts: string[] = []
     if (up > 0) parts.push(`上传 ${up} 本`)
     if (down > 0) parts.push(`下载 ${down} 本`)
     if (stats > 0) parts.push(`阅读时长 ${stats} 条`)
-    if (skipped > 0) parts.push(`跳过 ${skipped} 项（不在本机书库）`)
+    if (booksUp > 0) parts.push(`上传书籍 ${booksUp} 本`)
+    if (booksDown > 0) parts.push(`下载书籍 ${booksDown} 本`)
+    if (available > 0) parts.push(`云端还有 ${available} 本可下载`)
+    if (skipped > 0) parts.push(`跳过 ${skipped} 项`)
     if (failed > 0) parts.push(`失败 ${failed} 项`)
     return parts.length > 0 ? `同步完成：${parts.join('、')}` : '已是最新，无需同步'
   }
@@ -657,24 +830,40 @@ export class SyncEngine {
     )
   }
 
-  /** 清单：保留其它设备的条目，再用本机现状覆盖自己认识的键 */
-  private async writeManifest(path: string, previous: CloudManifest | null, now: number): Promise<void> {
-    const books: Record<string, ManifestBook> = { ...(previous?.books ?? {}) }
+  /** 清单里某本书的标题；schema 2 用 progress，schema 1 兼容旧的 books 字段 */
+  private manifestTitle(manifest: CloudManifest | null, key: string): string | undefined {
+    return manifest?.progress?.[key]?.title ?? manifest?.books?.[key]?.title
+  }
+
+  /** 清单：保留其它设备的条目，再用本机现状覆盖自己认识的键；books 段是云端书籍文件清单 */
+  private async writeManifest(
+    path: string,
+    previous: CloudManifest | null,
+    now: number,
+    files: Record<string, ManifestFile>
+  ): Promise<void> {
+    const progress: Record<string, ManifestBook> = { ...(previous?.progress ?? previous?.books ?? {}) }
     for (const book of this.store.books) {
-      const progress = this.store.progress[book.id]
-      if (!progress) continue
+      const record = this.store.progress[book.id]
+      if (!record) continue
       const key = bookSyncKey(book)
-      const mine = progress.deviceId === this.store.settings.deviceId
-      books[key] = {
+      const mine = record.deviceId === this.store.settings.deviceId
+      progress[key] = {
         bookId: book.id,
         title: book.title,
-        percent: progress.percent,
-        updatedAt: progress.updatedAt,
-        deviceId: progress.deviceId,
-        deviceName: mine ? this.store.settings.deviceName : books[key]?.deviceName
+        percent: record.percent,
+        updatedAt: record.updatedAt,
+        deviceId: record.deviceId,
+        deviceName: mine ? this.store.settings.deviceName : progress[key]?.deviceName
       }
     }
-    await this.writeJson(path, { schema: SCHEMA, updatedAt: now, deviceId: this.store.settings.deviceId, books })
+    await this.writeJson(path, {
+      schema: SCHEMA,
+      updatedAt: now,
+      deviceId: this.store.settings.deviceId,
+      progress,
+      files
+    })
   }
 
   private async writeDevice(devicesDir: string, now: number): Promise<void> {

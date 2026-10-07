@@ -41,6 +41,11 @@ if (sampleFiles.length < 2) {
   process.exit(1)
 }
 
+/** 只把失败原因打到台面上：同步引擎平时很安静，出问题时需要看得见 */
+const syncLog = (message: string): void => {
+  if (message.includes('失败')) console.log(`      ${message}`)
+}
+
 /** 可控时钟：冲突判定依赖 updatedAt 与「上次同步时间」的先后 */
 let clock = 1_700_000_000_000
 const now = (): number => clock
@@ -97,7 +102,7 @@ const syncKeyOf = (book?: Book): string => (book?.contentHash ? `sha1:${book.con
 console.log('\n[1] 设备 A：导入 → 选择云端目录 → 上传进度')
 const a = await makeDevice('A', true)
 check('A 导入了示例书籍', a.books.length === sampleFiles.length, `${a.books.length} 本`)
-const syncA = new SyncService(a.store, { chooseDirectory: async () => cloudDir, now })
+const syncA = new SyncService(a.store, { chooseDirectory: async () => cloudDir, now, log: syncLog })
 check('未选择目录时是未连接状态', !(await syncA.status()).loggedIn)
 
 const a1 = a.books[0]
@@ -129,7 +134,7 @@ check('进度已落盘到本地', aProgressRaw[a1.id]?.percent === 0.25)
 console.log('\n[2] 设备 B：导入同一批书（uuid 不同）→ 按内容指纹拉取')
 const b = await makeDevice('B', true)
 check('B 的书籍 uuid 与 A 不同', b.books[0].id !== a.books[0].id)
-const syncB = new SyncService(b.store, { chooseDirectory: async () => cloudDir, now })
+const syncB = new SyncService(b.store, { chooseDirectory: async () => cloudDir, now, log: syncLog })
 const connectedB = await syncB.connect()
 check(
   'B 拉取到 2 本进度',
@@ -211,7 +216,7 @@ check('「全部下载」不产生冲突挂起', pulled.phase === 'done' && sync
 console.log('\n[6] 云端有的书本机没有 → 如实跳过')
 const c = await makeDevice('C', false)
 check('C 是空书库', c.store.books.length === 0)
-const syncC = new SyncService(c.store, { chooseDirectory: async () => cloudDir, now })
+const syncC = new SyncService(c.store, { chooseDirectory: async () => cloudDir, now, log: syncLog })
 const stateC = await syncC.connect()
 const skipped = stateC.tasks.filter((task) => task.status === 'skipped').length
 check('按跳过处理而不是凭空造书', skipped >= 2 && c.store.books.length === 0, `跳过 ${skipped} 项`)
@@ -220,9 +225,9 @@ check('提示里说明了跳过原因', /跳过/.test(stateC.message ?? ''), sta
 /* ---------- 7. 云端清单 ---------- */
 console.log('\n[7] 云端清单与目录结构')
 const manifest = JSON.parse(readFileSync(join(remoteRoot, 'manifest.json'), 'utf8'))
-const entries = Object.values(manifest.books) as Array<{ title?: string; percent?: number }>
+const entries = Object.values(manifest.progress ?? {}) as Array<{ title?: string; percent?: number }>
 check('清单里带书名与进度', entries.length >= 2 && entries.every((entry) => typeof entry.title === 'string'), `${entries.length} 条`)
-check('清单带 schema 版本', manifest.schema === 1)
+check('清单带 schema 版本', manifest.schema === 2)
 check('设备登记包含设备名', Boolean(JSON.parse(readFileSync(join(remoteRoot, 'devices', `${a.store.settings.deviceId}.json`), 'utf8')).deviceName))
 check('同步时间已落盘', typeof JSON.parse(readFileSync(join(a.store.dataDir, 'sync', 'state.json'), 'utf8')).lastSyncAt === 'number')
 check('原子写没有留下临时文件', readdirSync(progressDir).filter((file) => file.endsWith('.tmp')).length === 0)
@@ -353,6 +358,76 @@ check(
 )
 
 check('已配置云端时 isConfigured() 为真（自动同步靠它判断）', syncA.isConfigured())
+
+/* ---------- 11. 书籍文件同步 ---------- */
+console.log('\n[11] 书籍文件同步（上传 / 校验 / 下载入册 / 上限）')
+const cloudBooksDir = join(remoteRoot, 'books')
+const bookFileOf = (book: Book): string =>
+  join(cloudBooksDir, `${encodeURIComponent(`sha1:${book.contentHash}`)}.epub`)
+
+a.store.settings.sync.uploadBooks = true
+const shared = a.books[0]
+shared.syncUpload = true
+advance(60_000)
+const uploadedBook = await syncA.run()
+check(
+  '上传书籍本体',
+  uploadedBook.tasks.some((task) => task.kind === 'book' && task.direction === 'up' && task.status === 'done'),
+  uploadedBook.message ?? ''
+)
+check('云端出现书籍文件（键 = 内容指纹）', existsSync(bookFileOf(shared)), bookFileOf(shared).replace(remoteRoot, ''))
+
+const reupload = await syncA.run()
+check(
+  '云端已有同一份时不重传',
+  !reupload.tasks.some((task) => task.kind === 'book' && task.direction === 'up' && task.status === 'done'),
+  reupload.message ?? ''
+)
+
+const listedOnly = await syncC.run()
+check(
+  '本机没有的书只提示、不偷偷下载',
+  c.store.books.length === 0 && /可下载/.test(listedOnly.message ?? ''),
+  listedOnly.message ?? ''
+)
+
+const downloadedBooks = await syncC.downloadAll()
+check('「全部下载云端书籍」把书拉下来', c.store.books.length === 1, `${c.store.books.length} 本`)
+const arrived = c.store.books[0]
+check('入册后的指纹与云端键一致', arrived?.contentHash === shared.contentHash, `${arrived?.contentHash?.slice(0, 12)}`)
+check('落盘到本机 books 目录', Boolean(arrived && existsSync(arrived.filePath)))
+check('书能读（章节解析出来了）', (arrived?.chapterCount ?? 0) > 0, `${arrived?.chapterCount} 章`)
+check('提示里报告了下载书籍', /下载书籍/.test(downloadedBooks.message ?? ''), downloadedBooks.message ?? '')
+
+// 内容被改坏 → sha1 校验兜住，拒绝入册
+const secondBook = a.books[1]
+secondBook.syncUpload = true
+advance(60_000)
+await syncA.run()
+const secondFile = bookFileOf(secondBook)
+check('第二本书也传上去了', existsSync(secondFile))
+writeFileSync(secondFile, Buffer.from('这不是一个 EPUB 文件'), 'utf8')
+const beforeCorrupt = c.store.books.length
+advance(60_000)
+const corruptRun = await syncC.downloadAll()
+check(
+  '云端文件被改坏后拒绝入册（sha1 校验兜住）',
+  c.store.books.length === beforeCorrupt,
+  `仍是 ${c.store.books.length} 本`
+)
+check('并且如实报告失败', corruptRun.tasks.some((task) => task.kind === 'book' && task.status === 'error'))
+
+// 大小上限：换一台空设备，把上限调成 1KB
+const fourth = await makeDevice('D', false)
+const syncD = new SyncService(fourth.store, { chooseDirectory: async () => cloudDir, now, maxBookBytes: 1024, log: syncLog })
+await syncD.connect()
+const limited = await syncD.downloadAll()
+check('超过单本上限的书不下载', fourth.store.books.length === 0, `${fourth.store.books.length} 本`)
+check(
+  '上限跳过会体现在任务里',
+  limited.tasks.some((task) => task.kind === 'book' && task.status === 'skipped'),
+  limited.message ?? ''
+)
 
 writeFileSync(join(workDir, 'check-ok.txt'), new Date().toISOString(), 'utf8')
 

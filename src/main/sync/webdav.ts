@@ -153,22 +153,30 @@ export class WebDavProvider implements CloudProvider {
 
   async read(path: string): Promise<Buffer | null> {
     const normalized = normalizeCloudPath(path)
-    const response = await this.request(normalized, { method: 'GET' })
-    if (response.status === 404) return null
-    if (response.status !== 200) throw new Error(`读取失败 ${normalized}：HTTP ${response.status}`)
-    return Buffer.from(await response.arrayBuffer())
+    // 先问一句大小：书可能是几 MB，按量估超时，别用 20 秒的小文件超时去下书
+    const info = await this.stat(normalized)
+    if (!info) return null
+    return await this.withRetry(async () => {
+      const response = await this.request(normalized, { method: 'GET', timeoutMs: this.timeoutFor(info.size) })
+      if (response.status === 404) return null
+      if (response.status !== 200) throw new Error(`读取失败 ${normalized}：HTTP ${response.status}`)
+      return Buffer.from(await response.arrayBuffer())
+    })
   }
 
   async write(path: string, data: Buffer): Promise<void> {
     const normalized = normalizeCloudPath(path)
-    const response = await this.request(normalized, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: new Uint8Array(data)
+    await this.withRetry(async () => {
+      const response = await this.request(normalized, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: new Uint8Array(data),
+        timeoutMs: this.timeoutFor(data.byteLength)
+      })
+      if (response.status !== 200 && response.status !== 201 && response.status !== 204) {
+        throw new Error(`写入失败 ${normalized}：HTTP ${response.status}`)
+      }
     })
-    if (response.status !== 200 && response.status !== 201 && response.status !== 204) {
-      throw new Error(`写入失败 ${normalized}：HTTP ${response.status}`)
-    }
   }
 
   async remove(path: string): Promise<void> {
@@ -201,7 +209,7 @@ export class WebDavProvider implements CloudProvider {
 
   private async request(
     cloudPath: string,
-    init: { method: string; headers?: Record<string, string>; body?: Uint8Array; depth?: string }
+    init: { method: string; headers?: Record<string, string>; body?: Uint8Array; depth?: string; timeoutMs?: number }
   ): Promise<Response> {
     const { config, password } = this.require()
     const headers: Record<string, string> = { ...(init.headers ?? {}) }
@@ -213,12 +221,36 @@ export class WebDavProvider implements CloudProvider {
       method: init.method,
       headers,
       body: init.body,
-      signal: AbortSignal.timeout(this.timeoutMs)
+      signal: AbortSignal.timeout(init.timeoutMs ?? this.timeoutMs)
     })
     if (response.status === 401 || response.status === 403) {
       throw new CloudNotConnectedError(`WebDAV 认证失败（HTTP ${response.status}）：请检查账号与应用密码`)
     }
     return response
+  }
+
+  /**
+   * 按数据量估超时：小 JSON 用 20 秒就够，几 MB 的书按 50KB/s 的下限放宽，
+   * 最多 10 分钟 —— 否则慢速上行传书必被自己的超时掐断。
+   */
+  private timeoutFor(sizeBytes: number): number {
+    const estimated = Math.ceil(sizeBytes / 50_000) * 1000 + 15_000
+    return Math.min(10 * 60_000, Math.max(this.timeoutMs, estimated))
+  }
+
+  /** 读写都是幂等的，失败重试两次（1 秒 / 3 秒退避）；认证失败不重试 */
+  private async withRetry<T>(run: () => Promise<T>, attempts = 3): Promise<T> {
+    let lastError: unknown
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        return await run()
+      } catch (err) {
+        lastError = err
+        if (err instanceof CloudNotConnectedError) throw err
+        if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, attempt === 1 ? 1000 : 3000))
+      }
+    }
+    throw lastError
   }
 
   private toUrl(cloudPath: string, config: WebDavConfig): string {

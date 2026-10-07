@@ -236,6 +236,17 @@ check('DELETE 生效', !server.has('/DshReader/progress/a.json'))
 await provider.remove('/DshReader/progress/a.json')
 check('重复删除不报错（幂等）', true)
 
+// 大文件往返：书是 MB 级，provider 要按大小放宽超时（读之前先问大小）
+const bigFile = Buffer.alloc(2 * 1024 * 1024, 7)
+await provider.ensureDir('/DshReader/books')
+await provider.write('/DshReader/books/sha1%3Abig.epub', bigFile)
+const bigBack = await provider.read('/DshReader/books/sha1%3Abig.epub')
+check(
+  '大文件 PUT/GET 往返一致（2MB）',
+  bigBack?.byteLength === bigFile.byteLength && bigBack[0] === 7 && bigBack[bigBack.length - 1] === 7,
+  `${bigBack?.byteLength} 字节`
+)
+
 /* ---------------- 2. 编码与安全 ---------------- */
 console.log('\n[2] 编码与安全')
 await provider.ensureDir('/DshReader/progress')
