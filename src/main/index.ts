@@ -10,6 +10,7 @@ import { enrichBook, importMany } from './library'
 import { isInsideDataDir, setDataRoot } from './media'
 import { seedDemoStats } from './devseed'
 import { Store, resolveDataDir } from './store'
+import { startLanServer } from './lan'
 import { SyncService } from './sync'
 
 app.setName('Dsh Reader')
@@ -189,6 +190,17 @@ async function bootstrap(): Promise<void> {
     })
   registerIpc(localStore, syncService)
 
+  // 局域网书籍直传：手机在同一个 WiFi 下可直接高速拉取本机书库（不经网盘、不限速）
+  try {
+    const lan = await startLanServer({
+      booksDir: localStore.booksDir,
+      infoFile: join(app.getPath('userData'), 'lan.txt'),
+      log
+    })
+    log(`[lan] 手机端填这个地址：${lan.urls[0] ?? `http://<电脑IP>:${lan.port}`}`)
+  } catch (error) {
+    log(`[lan] 启动失败（端口 8787 被占用？）：${String(error)}`)
+  }
   mainWindow = createWindow()
   const win = mainWindow
 
