@@ -222,19 +222,6 @@ export function SettingsPage() {
             </div>
           </div>
 
-          <div
-            className="preview-box"
-            style={{
-              background: theme.bg,
-              color: theme.text,
-              fontSize: reader.fontSize,
-              lineHeight: reader.lineHeight,
-              fontFamily: FONT_STACKS[reader.fontFamily].css
-            }}
-          >
-            <p>十月的风从窗缝里钻进来，翻动了桌上的书页。他把书按住，就着午后那点发白的光，又读了一页。</p>
-            <p>“所谓阅读，不过是把别人的时间借来，安放在自己的生命里。”</p>
-          </div>
         </section>
 
         {/* ---------- 外观 ---------- */}
