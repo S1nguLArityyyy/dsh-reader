@@ -14,6 +14,7 @@ import { SyncEngine } from './engine'
 import { LocalFolderProvider } from './local-folder'
 import type { CloudProvider } from './provider'
 import { createSecretStore, type SecretStore } from './secret-store'
+import { BaiduOpenProvider } from './baidu-open'
 import { PanWebProvider } from './pan-web'
 import { WebDavProvider } from './webdav'
 
@@ -31,6 +32,9 @@ export interface SyncServiceOptions {
   secretStore?: SecretStore
   /** 单本书同步的大小上限（默认 100MB） */
   maxBookBytes?: number
+  /** 百度网盘开放平台凭据（由 src/main/index.ts 从本地文件注入，不入库） */
+  baiduAppKey?: string
+  baiduSecretKey?: string
 }
 
 export interface WebDavConnectPayload {
@@ -133,6 +137,16 @@ export class SyncService {
         this.store.save('settings', true)
         return picked
       }
+    })
+  }
+
+  private createBaiduOpen(): CloudProvider {
+    // 开放平台凭据：AppKey/SecretKey 由用户提供（见 docs/百度网盘开放平台方案.md）
+    return new BaiduOpenProvider({
+      appKey: this.options.baiduAppKey ?? '',
+      secretKey: this.options.baiduSecretKey ?? '',
+      appName: '阅读器',
+      log: this.options.log
     })
   }
 

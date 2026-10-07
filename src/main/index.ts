@@ -1,3 +1,4 @@
+import { BAIDU_APP_KEY, BAIDU_SECRET_KEY } from './baidu-credentials'
 import { logSync } from './sync/webdav'
 import { app, BrowserWindow, net, protocol, shell } from 'electron'
 import { appendFileSync } from 'node:fs'
@@ -177,6 +178,8 @@ async function bootstrap(): Promise<void> {
   })
 
   syncService = new SyncService(localStore, {
+      baiduAppKey: BAIDU_APP_KEY,
+      baiduSecretKey: BAIDU_SECRET_KEY,
       log: (line: string) => {
         // 同步日志落盘（userData/logs/sync.log）：排查"卡在哪一步 / 为什么跳过"靠它
         void logSync(line)

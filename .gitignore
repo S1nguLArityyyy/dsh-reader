@@ -19,3 +19,7 @@ shots/
 
 # 应用根目录下的书籍副本（导入时复制）
 books/
+
+# 鏈湴鍑嵁锛堢櫨搴︾綉鐩樺紑鏀惧钩鍙帮級
+src/main/baidu-credentials.ts
+
