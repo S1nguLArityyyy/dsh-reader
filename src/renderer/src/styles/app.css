@@ -1119,13 +1119,6 @@
   border-color: var(--primary);
 }
 
-.preview-box {
-  margin-top: 16px;
-  border-radius: var(--r-md);
-  border: 1px solid var(--border);
-  padding: 18px 20px;
-  transition: background 0.2s, color 0.2s;
-}
 
 .preview-box p {
   margin: 0 0 0.9em;
