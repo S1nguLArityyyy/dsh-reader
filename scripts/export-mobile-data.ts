@@ -38,10 +38,20 @@ console.log(`  spine 章节数：${meta.chapterHrefs.length}　目录条目：${
 console.log('解压…')
 await extractEpub(bookPath, workDir)
 
-// 目录里的标题按 href 建索引，正文标题优先用目录里的
+// 目录里的标题按 href 建索引（同时按完整路径与文件名两个键匹配 —— 目录里的 href 与 spine 里的
+// 相对基准不一定一致，只用一个键会全部匹配不上，标题就全变成"第 N 章"）
 const tocLabels = new Map<string, string>()
 for (const entry of flattenToc(meta)) {
-  if (entry.href && entry.label) tocLabels.set(entry.href.split('#')[0], entry.label)
+  if (!entry.href || !entry.label) continue
+  const clean = entry.href.split('#')[0]
+  tocLabels.set(clean, entry.label)
+  tocLabels.set(basename(clean), entry.label)
+}
+
+/** 目录里没有标题时，退回正文里的第一个小标题 */
+const firstHeading = (html: string): string => {
+  const match = html.match(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i)
+  return match ? match[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 40) : ''
 }
 
 // 正文图片：复制到 media/ 并返回相对地址（相对于页面 URL，浏览器与 Capacitor 都能取到）
@@ -62,7 +72,12 @@ const chapters: Array<{ index: number; label: string; html: string }> = []
 for (const [index, href] of meta.chapterHrefs.entries()) {
   const plainHref = href.split('#')[0]
   const chapter = await readChapter(workDir, meta.opfDir, href, copyMedia)
-  const label = tocLabels.get(plainHref) || chapter.title || `第 ${index + 1} 章`
+  const label =
+    tocLabels.get(plainHref) ||
+    tocLabels.get(basename(plainHref)) ||
+    chapter.title ||
+    firstHeading(chapter.html) ||
+    `第 ${index + 1} 章`
   chapters.push({ index, label, html: chapter.html })
   if ((index + 1) % 5 === 0) console.log(`  已导出 ${index + 1}/${meta.chapterHrefs.length}`)
 }
@@ -83,7 +98,8 @@ const library = {
   exportedAt: new Date().toISOString(),
   book: {
     id: 'real-1',
-    title: basename(bookPath, extname(bookPath)),
+    // 书名用 EPUB 内部的书名（文件名可能是 uuid 那种，不能当书名用）
+    title: meta.title || basename(bookPath, extname(bookPath)),
     metaTitle: meta.title,
     author: meta.author || '未知作者',
     description: meta.description,
