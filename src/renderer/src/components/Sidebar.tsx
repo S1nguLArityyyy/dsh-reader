@@ -1,3 +1,4 @@
+import appIcon from '../assets/app-icon.png'
 import { useMemo } from 'react'
 import {
   BarChart3,
@@ -31,7 +32,7 @@ export function Sidebar() {
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-logo">
-          <BookMarked size={19} />
+          <img src={appIcon} alt="" />
         </div>
         <div className="brand-name">Dsh Reader</div>
       </div>
