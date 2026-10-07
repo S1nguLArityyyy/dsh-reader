@@ -217,16 +217,117 @@ export class PanWebProvider implements CloudProvider {
     }
   }
 
-  async read(): Promise<Buffer | null> {
-    throw new Error('百度网盘下载属阶段 2，尚未实现')
+  /** 下载：filemetas 拿 dlink → 用同一分区的 cookie 直接 GET（网页会话不需要 access_token） */
+  async read(path: string): Promise<Buffer | null> {
+    const target = normalizeCloudPath(path)
+    const token = await this.ensureToken()
+    const url =
+      `${BASE}/api/filemetas?${COMMON}&dlink=1&target=${encodeURIComponent(JSON.stringify([target]))}` +
+      `&bdstoken=${encodeURIComponent(token)}`
+    const { status, text } = await this.fetchText(url)
+    this.options.log?.(`[pan-web] GET filemetas ${target} → HTTP ${status}  ${text.slice(0, 140)}`)
+    if (status !== 200) return null
+    let info: Array<{ dlink?: string }> = []
+    try {
+      const parsed = JSON.parse(text) as { errno?: number; info?: Array<{ dlink?: string }> }
+      if (parsed.errno !== 0) return null
+      info = parsed.info ?? []
+    } catch {
+      return null
+    }
+    const dlink = info[0]?.dlink
+    if (!dlink) return null
+    await this.pause(200)
+    const response = await this.ses().fetch(dlink, { method: 'GET' })
+    this.options.log?.(`[pan-web] GET dlink ${target} → HTTP ${response.status}`)
+    if (response.status !== 200) return null
+    return Buffer.from(await response.arrayBuffer())
   }
 
-  async write(): Promise<void> {
-    throw new Error('百度网盘上传属阶段 2，尚未实现')
+  /**
+   * 上传（百度网页版的三步）：
+   *   ① precreate  → 拿 uploadid
+   *   ② superfile2 → 逐片传（4MB 一片）
+   *   ③ create     → 落盘
+   * 小文件（几 KB 的 JSON）就是"只有一片"的情况，走同一套。
+   */
+  async write(path: string, data: Buffer): Promise<void> {
+    const target = normalizeCloudPath(path)
+    const dir = normalizeCloudPath(target.split('/').slice(0, -1).join('/') || '/')
+    await this.ensureDir(dir)
+    const size = data.byteLength
+    const CHUNK = 4 * 1024 * 1024
+    const parts: Buffer[] = []
+    for (let offset = 0; offset < Math.max(size, 1); offset += CHUNK) {
+      parts.push(data.subarray(offset, Math.min(offset + CHUNK, size)))
+    }
+    const blockList = parts.map((part) => createHash('md5').update(part).digest('hex'))
+
+    // ① precreate
+    const pre = await this.postForm('/api/precreate', {
+      path: target,
+      size: String(size),
+      isdir: '0',
+      autoinit: '1',
+      rtype: '3',
+      block_list: JSON.stringify(blockList)
+    })
+    this.options.log?.(`[pan-web] POST precreate ${target} → HTTP ${pre.status}  ${pre.text.slice(0, 140)}`)
+    if (pre.status !== 200) throw new Error(`上传失败（precreate HTTP ${pre.status}）`)
+    const preJson = JSON.parse(pre.text) as { errno?: number; uploadid?: string }
+    if (preJson.errno !== 0 || !preJson.uploadid) {
+      if (preJson.errno === 132) throw new Error('被百度限流（errno 132）：请稍后再试，本轮已放弃')
+      throw new Error(`上传失败（precreate errno ${preJson.errno}）`)
+    }
+    const uploadid = preJson.uploadid
+
+    // ② 分片上传（每片停一下，避免触发风控）
+    for (let index = 0; index < parts.length; index += 1) {
+      const query =
+        `method=upload&type=tmpfile&path=${encodeURIComponent(target)}` +
+        `&uploadid=${encodeURIComponent(uploadid)}&partseq=${index}`
+      const response = await this.ses().fetch(
+        `https://d.pcs.baidu.com/rest/2.0/pcs/superfile2?${query}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: parts[index] }
+      )
+      const text = await response.text()
+      this.options.log?.(
+        `[pan-web] POST upload ${target} 片${index + 1}/${parts.length} → HTTP ${response.status}  ${text.slice(0, 100)}`
+      )
+      if (response.status !== 200) throw new Error(`上传失败（分片 ${index + 1} HTTP ${response.status}）`)
+      await this.pause(300)
+    }
+
+    // ③ commit
+    const done = await this.postForm('/api/create?a=commit', {
+      path: target,
+      size: String(size),
+      isdir: '0',
+      uploadid,
+      block_list: JSON.stringify(blockList)
+    })
+    this.options.log?.(`[pan-web] POST create(file) ${target} → HTTP ${done.status}  ${done.text.slice(0, 140)}`)
+    if (done.status !== 200) throw new Error(`上传失败（create HTTP ${done.status}）`)
+    const doneJson = JSON.parse(done.text) as { errno?: number }
+    // 0 = 成功；-8 = 已存在（目标存在时 rtype=3 覆盖，这里兜底）
+    if (doneJson.errno !== 0 && doneJson.errno !== -8) {
+      if (doneJson.errno === -6 || doneJson.errno === -7) {
+        throw new CloudNotConnectedError('登录已过期：请重新登录百度网盘')
+      }
+      throw new Error(`上传失败（create errno ${doneJson.errno}）`)
+    }
   }
 
-  async remove(): Promise<void> {
-    throw new Error('百度网盘删除属阶段 2，尚未实现')
+  async remove(path: string): Promise<void> {
+    const target = normalizeCloudPath(path)
+    const { status, text } = await this.postForm('/api/filemanager?opera=delete', {
+      filelist: JSON.stringify([target])
+    })
+    this.options.log?.(`[pan-web] POST delete ${target} → HTTP ${status}  ${text.slice(0, 140)}`)
+    // 不存在（errno -9）按成功处理：删除是幂等的
+    if (status !== 200) throw new Error(`删除失败（HTTP ${status}）`)
+    const parsed = JSON.parse(text) as { errno?: number }
+    if (parsed.errno !== 0 && parsed.errno !== -9) throw new Error(`删除失败（errno ${parsed.errno}）`)
   }
 }
 
