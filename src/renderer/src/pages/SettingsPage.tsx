@@ -711,42 +711,6 @@ export function SettingsPage() {
             </div>
           </div>
         </section>
-
-        {/* ---------- 设计阶段预览入口 ---------- */}
-        <section className="setting-card">
-          <h3>
-            <Eye size={15} style={{ verticalAlign: -2, marginRight: 6 }} />
-            界面预览（设计阶段临时入口）
-          </h3>
-          <div className="setting-hint">
-            同步引擎已接入（本地文件夹模式）。下面两个入口用于单独预览同步弹窗的界面。
-          </div>
-          <div className="setting-row">
-            <div>
-              <div className="setting-label">同步状态弹窗</div>
-              <div className="setting-desc">任务计数 · 进度条 · 上次同步时间 · 立即同步 / 取消同步 / 全部下载</div>
-            </div>
-            <div className="setting-control">
-              <button className="btn btn-ghost btn-sm" onClick={() => setSyncModal(true)}>
-                预览
-              </button>
-            </div>
-          </div>
-          <div className="setting-row">
-            <div>
-              <div className="setting-label">进度冲突弹窗</div>
-              <div className="setting-desc">
-                <AlertTriangle size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
-                使用两本示例书籍展示「覆盖云端 / 覆盖本地」的选择交互
-              </div>
-            </div>
-            <div className="setting-control">
-              <button className="btn btn-ghost btn-sm" onClick={previewConflicts}>
-                预览
-              </button>
-            </div>
-          </div>
-        </section>
       </div>
     </div>
   )

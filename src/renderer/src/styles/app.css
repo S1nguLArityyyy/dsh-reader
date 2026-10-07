@@ -1120,14 +1120,7 @@
 }
 
 
-.preview-box p {
-  margin: 0 0 0.9em;
-  text-indent: 2em;
-}
 
-.preview-box p:last-child {
-  margin-bottom: 0;
-}
 
 .range-value {
   font-size: 12.5px;
