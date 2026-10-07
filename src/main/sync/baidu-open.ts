@@ -301,6 +301,8 @@ export class BaiduOpenProvider implements CloudProvider {
     const target = normalizeCloudPath(path)
     const dir = normalizeCloudPath(target.split('/').slice(0, -1).join('/') || '/')
     await this.ensureDir(dir)
+    // 百度对同名文件是"改名"而不是"覆盖" ✗ → 先删掉旧的，否则每次同步都会生成 manifest_2026xxxx.json ✗
+    await this.remove(target).catch(() => undefined)
     const size = data.byteLength
     const CHUNK = 4 * 1024 * 1024
     const parts: Buffer[] = []
@@ -353,8 +355,20 @@ export class BaiduOpenProvider implements CloudProvider {
     }
   }
 
-  async remove(): Promise<void> {
-    throw new Error('百度开放平台删除属下一步实现')
+  /** 删除文件（百度不覆盖同名文件、而是自动改名 ✗ 所以写入前必须先删 ✓） */
+  async remove(path: string): Promise<void> {
+    const token = await this.accessToken()
+    const target = normalizeCloudPath(path)
+    const body = new URLSearchParams({
+      async: '0',
+      filelist: JSON.stringify([target]),
+      access_token: token
+    }).toString()
+    const result = await this.call<{ errno?: number }>(`${XPAN}/file?method=filemanager&opera=delete`, {
+      method: 'POST',
+      body
+    })
+    this.options.log?.(`[baidu] 删除 ${target} → errno=${String(result.errno)}`)
   }
 }
 
