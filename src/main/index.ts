@@ -72,17 +72,11 @@ function wait(ms: number): Promise<void> {
 }
 
 function createWindow(): BrowserWindow {
-  // 起始尺寸：默认桌面窗口；DSH_WINDOW_SIZE=390,844 可以直接以手机尺寸启动，
-  // 用真实书库预览手机布局（浏览器预览模式用的是内存示例数据）
-  const [startWidth, startHeight] = (process.env.DSH_WINDOW_SIZE ?? '1280,800')
-    .split(',')
-    .map((part) => Number(part.trim()))
   const win = new BrowserWindow({
-    width: Number.isFinite(startWidth) && startWidth > 0 ? startWidth : 1280,
-    height: Number.isFinite(startHeight) && startHeight > 0 ? startHeight : 800,
-    // 下限放到手机宽度：接口在 768px 断点处切到手机布局，窗口拉窄就能预览
-    minWidth: 360,
-    minHeight: 480,
+    width: 1280,
+    height: 800,
+    minWidth: 820,
+    minHeight: 600,
     show: false,
     backgroundColor: '#f4f5f7',
     title: 'Dsh Reader',
