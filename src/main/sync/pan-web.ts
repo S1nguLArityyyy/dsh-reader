@@ -289,7 +289,7 @@ export class PanWebProvider implements CloudProvider {
     for (let index = 0; index < parts.length; index += 1) {
       const query =
         `method=upload&type=tmpfile&path=${encodeURIComponent(target)}` +
-        `&uploadid=${encodeURIComponent(uploadid)}&partseq=${index}`
+        `&uploadid=${encodeURIComponent(uploadid)}&partseq=${index}&app_id=250528&channel=chunlei&web=1&clienttype=0`
       const response = await this.ses().fetch(
         `https://d.pcs.baidu.com/rest/2.0/pcs/superfile2?${query}`,
         { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: parts[index] }
