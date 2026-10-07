@@ -1,7 +1,7 @@
 import { app, BrowserWindow, net, protocol, shell } from 'electron'
 import { appendFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { registerIpc } from './ipc'
 import { enrichBook, importMany } from './library'
@@ -11,6 +11,14 @@ import { Store, resolveDataDir } from './store'
 import { SyncService } from './sync'
 
 app.setName('Dsh Reader')
+
+// 显式指定数据目录时（开发 / 截图 / 多设备演示），把 Electron 自己的 profile 也一起隔离。
+// 否则同一台机器上跑多个实例会共用 %APPDATA% 下的同一份 profile（缓存 / Local Storage /
+// GPUCache），互相加锁打架；隔离后每个实例的数据与缓存都各自独立。
+const dataDirOverride = process.env.DSH_DATA_DIR
+if (dataDirOverride && dataDirOverride.trim()) {
+  app.setPath('userData', resolve(dataDirOverride.trim()))
+}
 
 /** Windows 下 Electron 是 GUI 子系统进程，控制台日志可能丢失，因此同时写文件 */
 const logFile = process.env.DSH_LOG_FILE
@@ -46,6 +54,9 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow: BrowserWindow | null = null
 let store: Store | null = null
+let syncService: SyncService | null = null
+/** 上一次自动同步的时间，用来判断是否到了设置的间隔 */
+let lastAutoSyncAt = 0
 
 const shotDir = process.env.DSH_SHOT_DIR
 const shotList = (process.env.DSH_SHOT_LIST ?? 'library').split(',').map((s) => s.trim()).filter(Boolean)
@@ -164,7 +175,8 @@ async function bootstrap(): Promise<void> {
     return net.fetch(pathToFileURL(raw).toString())
   })
 
-  registerIpc(localStore, new SyncService())
+  syncService = new SyncService(localStore, { log, onChanged: notifySyncChanged })
+  registerIpc(localStore, syncService)
 
   mainWindow = createWindow()
   const win = mainWindow
@@ -180,6 +192,35 @@ async function bootstrap(): Promise<void> {
   win.webContents.once('did-finish-load', () => {
     void backfillLibrary(localStore, win)
   })
+
+  // 自动同步：启动后先来一次，之后按设置的间隔由定时器触发
+  if (localStore.settings.sync.auto && localStore.settings.sync.localCloudDir) {
+    lastAutoSyncAt = Date.now()
+    setTimeout(() => void syncService?.run(), 3000)
+  }
+  startAutoSync()
+}
+
+/** 同步跑完后通知界面刷新：进度、今日阅读显示的是哪本书、统计数字都可能变了 */
+function notifySyncChanged(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:changed')
+}
+
+/** 每分钟检查一次是否到了自动同步间隔；改设置不用重建定时器 */
+function startAutoSync(): void {
+  const timer = setInterval(() => {
+    if (!store || !syncService) return
+    const config = store.settings.sync
+    if (!config.auto || !config.localCloudDir) return
+    const intervalMs = Math.max(1, config.intervalMinutes) * 60_000
+    if (Date.now() - lastAutoSyncAt < intervalMs) return
+    lastAutoSyncAt = Date.now()
+    void syncService
+      .run()
+      .then((state) => log(`[sync] 自动同步：${state.phase} ${state.message ?? ''}`))
+      .catch((err) => log('[sync] 自动同步失败', err))
+  }, 60_000)
+  timer.unref?.()
 }
 
 /** 后台补齐旧书信息，每补一本就通知渲染进程刷新 */
@@ -230,8 +271,23 @@ app.on('before-quit', (event) => {
   if (quitting || !store) return
   event.preventDefault()
   quitting = true
-  void store
-    .flushAll()
-    .catch((err) => log('[quit] 落盘失败', err))
-    .finally(() => app.quit())
+
+  const localStore = store
+  const flushAndQuit = (): void => {
+    void localStore
+      .flushAll()
+      .catch((err) => log('[quit] 落盘失败', err))
+      .finally(() => app.quit())
+  }
+
+  // 退出前同步一次（最多等 3 秒，绝不拖住退出）
+  const config = localStore.settings.sync
+  if (syncService && config.auto && config.localCloudDir) {
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000))
+    void Promise.race([syncService.run().then(() => undefined), timeout])
+      .catch((err) => log('[quit] 退出前同步失败', err))
+      .then(flushAndQuit)
+    return
+  }
+  flushAndQuit()
 })

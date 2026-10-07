@@ -177,6 +177,8 @@ interface AppStore {
   runSync: () => Promise<void>
   cancelSync: () => Promise<void>
   connectSync: () => Promise<void>
+  configureWebdav: (payload: { url: string; username: string; password?: string }) => Promise<void>
+  logoutSync: () => Promise<void>
   downloadAll: () => Promise<void>
   resolveConflicts: (choice: 'local' | 'cloud') => Promise<void>
   previewConflicts: () => void
@@ -245,6 +247,16 @@ export const useApp = create<AppStore>((set, get) => ({
       if (typeof window.api.library.onChanged === 'function') {
         window.api.library.onChanged(() => {
           void get().loadBooks()
+        })
+      }
+
+      // 同步跑完（含启动后 / 定时 / 退出前的自动同步）后刷新：
+      // 书库进度、「今日阅读」显示的是哪本书、统计页数字都可能变了
+      if (typeof window.api.sync.onChanged === 'function') {
+        window.api.sync.onChanged(() => {
+          void get().loadSync()
+          void get().loadBooks()
+          void get().loadStats()
         })
       }
 
@@ -501,6 +513,15 @@ export const useApp = create<AppStore>((set, get) => ({
     try {
       const sync = await window.api.sync.run()
       set({ sync })
+      // 进度 / 今日阅读 / 统计都可能变了，立刻刷新（自动同步那条路走 sync:changed 事件）
+      await get().loadBooks()
+      await get().loadStats()
+      if (sync.phase === 'conflict') {
+        await get().loadSync()
+        set({ conflictModalOpen: true, conflictPreview: false })
+        get().toast('info', sync.message ?? '发现阅读进度冲突，请选择保留哪一边')
+        return
+      }
       if (sync.message) get().toast(sync.phase === 'error' ? 'error' : 'info', sync.message)
     } catch (err) {
       get().toast('error', `同步失败：${errorText(err)}`)
@@ -515,7 +536,17 @@ export const useApp = create<AppStore>((set, get) => ({
   async connectSync() {
     try {
       const sync = await window.api.sync.connect()
-      set({ sync })
+      // 连接时主进程会把选中的目录写进设置，这里跟着刷新一次
+      const settings = await window.api.settings.get()
+      set({ sync, settings })
+      await get().loadBooks()
+      await get().loadStats()
+      if (sync.phase === 'conflict') {
+        await get().loadSync()
+        set({ conflictModalOpen: true, conflictPreview: false })
+        get().toast('info', sync.message ?? '发现阅读进度冲突，请选择保留哪一边')
+        return
+      }
       if (sync.message) get().toast('info', sync.message)
     } catch (err) {
       get().toast('error', errorText(err))
@@ -525,6 +556,32 @@ export const useApp = create<AppStore>((set, get) => ({
   async downloadAll() {
     try {
       const sync = await window.api.sync.downloadAll()
+      set({ sync })
+      await get().loadBooks()
+      await get().loadStats()
+      if (sync.message) get().toast('info', sync.message)
+    } catch (err) {
+      get().toast('error', errorText(err))
+    }
+  },
+
+  async configureWebdav(payload) {
+    try {
+      const sync = await window.api.sync.configureWebdav(payload)
+      // 地址与账号落在设置里；应用密码只在主进程，不回传
+      const settings = await window.api.settings.get()
+      set({ sync, settings })
+      await get().loadBooks()
+      await get().loadStats()
+      if (sync.message) get().toast(sync.phase === 'error' ? 'error' : 'info', sync.message)
+    } catch (err) {
+      get().toast('error', errorText(err))
+    }
+  },
+
+  async logoutSync() {
+    try {
+      const sync = await window.api.sync.logout()
       set({ sync })
       if (sync.message) get().toast('info', sync.message)
     } catch (err) {

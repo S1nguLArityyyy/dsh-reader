@@ -33,6 +33,7 @@ const BOOKS: Book[] = [
     fileName: '星海拾遗 01.epub',
     filePath: 'D:/demo/星海拾遗 01.epub',
     fileSize: 3_540_000,
+    contentHash: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
     coverFile: null,
     coverColor: '#3f6d8e',
     chapterCount: 4,
@@ -56,6 +57,7 @@ const BOOKS: Book[] = [
     fileName: '星海拾遗 02.epub',
     filePath: 'D:/demo/星海拾遗 02.epub',
     fileSize: 3_620_000,
+    contentHash: 'b2c3d4e5f60718293a4b5c6d7e8f901234567890',
     coverFile: null,
     coverColor: '#6b4a7a',
     chapterCount: 4,
@@ -79,6 +81,7 @@ const BOOKS: Book[] = [
     fileName: '十月书简.epub',
     filePath: 'D:/demo/十月书简.epub',
     fileSize: 1_980_000,
+    contentHash: 'c3d4e5f60718293a4b5c6d7e8f90123456789012',
     coverFile: null,
     coverColor: '#8a5a3c',
     chapterCount: 5,
@@ -215,6 +218,9 @@ const settings: Settings = {
     mode: previewPaged ? 'paged' : 'scroll'
   },
   sync: {
+    provider: 'local',
+    localCloudDir: 'D:/demo/云端同步目录',
+    webdav: { url: '', username: '' },
     auto: false,
     intervalMinutes: 10,
     remoteDir: '/DshReader',

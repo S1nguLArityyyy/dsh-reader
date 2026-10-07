@@ -346,7 +346,9 @@
   background: var(--hover);
 }
 
-.sync-pill span {
+/* 只让文字标签占满剩余宽度：这条规则以前是 .sync-pill span，
+   结果把同为 span 的状态圆点也一起 flex:1 拉成了绿色椭圆 */
+.sync-pill .sync-label {
   flex: 1;
   text-align: left;
   overflow: hidden;
@@ -355,15 +357,17 @@
 }
 
 .sync-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--text-4);
   flex: 0 0 auto;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .sync-dot.on {
   background: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 18%, transparent);
 }
 
 .main {

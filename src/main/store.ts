@@ -73,6 +73,9 @@ export class Store {
         mode: 'scroll'
       },
       sync: {
+        provider: 'local',
+        localCloudDir: null,
+        webdav: { url: '', username: '' },
         auto: false,
         intervalMinutes: 10,
         remoteDir: '/DshReader',
@@ -101,12 +104,26 @@ export class Store {
       ...saved,
       dataDir: this.dataDir,
       reader: { ...defaults.reader, ...(saved.reader ?? {}) },
-      sync: { ...defaults.sync, ...(saved.sync ?? {}) },
+      sync: {
+        ...defaults.sync,
+        ...(saved.sync ?? {}),
+        webdav: { ...defaults.sync.webdav, ...(saved.sync?.webdav ?? {}) }
+      },
       appearance: { ...defaults.appearance, ...(saved.appearance ?? {}) }
     }
     this.books = await this.readJson<Book[]>('library', [])
     this.progress = await this.readJson<Record<string, Progress>>('progress', {})
     this.sessions = await this.readJson<SessionRow[]>('sessions', [])
+
+    // 阅读时长行补上设备号（老数据都是本机产生的），同步时才分得清哪些条目是自己的
+    let sessionsFixed = false
+    for (const row of this.sessions) {
+      if (!row.deviceId) {
+        row.deviceId = this.settings.deviceId
+        sessionsFixed = true
+      }
+    }
+    if (sessionsFixed) this.save('sessions')
 
     // 老版本把书籍副本放在数据目录里，统一迁移到应用根目录的 books/
     await this.migrateBookFiles()
@@ -138,6 +155,10 @@ export class Store {
       }
       if (typeof book.metaTitle !== 'string') {
         book.metaTitle = book.title ?? ''
+        regrouped = true
+      }
+      if (book.contentHash === undefined) {
+        book.contentHash = null
         regrouped = true
       }
       if (book.manualSeries === undefined) {
@@ -289,15 +310,23 @@ export class Store {
     }
   }
 
-  /** 累加阅读时长到「书 + 天」聚合行 */  addReadingTime(bookId: string, seconds: number): void {
+  /**
+   * 累加阅读时长到「书 + 天 + 设备」聚合行。
+   * 必须带上设备号匹配：同步回来的别的设备的行不能被本地心跳改写。
+   */
+  addReadingTime(bookId: string, seconds: number): void {
     if (!bookId || seconds <= 0) return
     const day = todayKey()
     const now = Date.now()
-    let row = this.sessions.find((s) => s.bookId === bookId && s.day === day)
+    const deviceId = this.settings.deviceId
+    let row = this.sessions.find(
+      (s) => s.bookId === bookId && s.day === day && (s.deviceId ?? deviceId) === deviceId
+    )
     if (!row) {
-      row = { id: randomUUID(), bookId, day, seconds: 0, firstAt: now, lastAt: now }
+      row = { id: randomUUID(), bookId, day, seconds: 0, firstAt: now, lastAt: now, deviceId }
       this.sessions.push(row)
     }
+    row.deviceId = deviceId
     row.seconds += Math.round(seconds)
     row.lastAt = now
     this.save('sessions')

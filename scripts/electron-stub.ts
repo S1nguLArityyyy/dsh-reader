@@ -11,12 +11,20 @@ const tempRoot = mkdtempSync(join(tmpdir(), 'dsh-app-'))
 
 export const app = {
   getPath: (name: string) => (name === 'userData' ? join(tempRoot, 'userData') : join(tempRoot, name)),
+  setPath: () => undefined,
   getVersion: () => '0.1.0-test',
   setName: () => undefined,
   getAppPath: () => process.cwd(),
   on: () => undefined,
   whenReady: async () => undefined,
   quit: () => undefined
+}
+
+/** 测试环境没有系统凭据加密，退化成明文（与 secret-store 的降级路径一致） */
+export const safeStorage = {
+  isEncryptionAvailable: () => false,
+  encryptString: (value: string) => Buffer.from(value, 'utf8'),
+  decryptString: (buffer: Buffer) => buffer.toString('utf8')
 }
 
 export const ipcMain = {

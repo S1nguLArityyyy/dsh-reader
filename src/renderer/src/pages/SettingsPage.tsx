@@ -29,9 +29,14 @@ export function SettingsPage() {
   const setSyncModal = useApp((s) => s.setSyncModal)
   const previewConflicts = useApp((s) => s.previewConflicts)
   const connectSync = useApp((s) => s.connectSync)
+  const configureWebdav = useApp((s) => s.configureWebdav)
+  const logoutSync = useApp((s) => s.logoutSync)
   const toast = useApp((s) => s.toast)
 
   const [nameDraft, setNameDraft] = useState<string | null>(null)
+  // WebDAV 表单：null = 跟随设置（密码不回传，所以永远从空开始）
+  const [davDraft, setDavDraft] = useState<{ url: string; username: string; password: string } | null>(null)
+  const [davBusy, setDavBusy] = useState(false)
 
   if (!settings) return <div className="page" />
 
@@ -39,6 +44,7 @@ export function SettingsPage() {
   const syncSettings = settings.sync
   const appearance = settings.appearance
   const theme = READER_THEMES[reader.theme]
+  const dav = davDraft ?? { url: syncSettings.webdav.url, username: syncSettings.webdav.username, password: '' }
 
   const patchReader = (patch: Partial<typeof reader>): void => {
     void saveSettings({ reader: { ...reader, ...patch } })
@@ -336,26 +342,136 @@ export function SettingsPage() {
             网盘同步
           </h3>
           <div className="setting-hint">
-            通过百度网盘交换阅读进度：应用内登录一次，之后自动在该账号的同步文件夹里读写进度文件。
+            把阅读进度与阅读时长同步到「云端」，两端读写同一批文件。
+            本地文件夹适合单机或局域网（把目录指向共享盘）；WebDAV 适合两台设备隔着网络同步
+            （坚果云等，填地址 + 账号 + 应用密码即可，不需要内嵌登录）。
           </div>
 
           <div className="setting-row">
             <div>
-              <div className="setting-label">账号状态</div>
-              <div className="setting-desc">{sync.loggedIn ? `已连接：${sync.account ?? ''}` : '尚未登录百度网盘'}</div>
+              <div className="setting-label">云端类型</div>
+              <div className="setting-desc">切换后云端目录各自独立，互不影响</div>
+            </div>
+            <div className="setting-control">
+              <select
+                className="select"
+                value={syncSettings.provider}
+                onChange={(e) => patchSync({ provider: e.target.value as 'local' | 'webdav' })}
+              >
+                <option value="local">本地文件夹</option>
+                <option value="webdav">WebDAV（坚果云等）</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">连接状态</div>
+              <div className="setting-desc">
+                {sync.loggedIn
+                  ? `已连接：${sync.account ?? ''}`
+                  : syncSettings.provider === 'webdav'
+                    ? '尚未连接：填写下面的地址、账号、应用密码后点「保存并连接」'
+                    : '尚未连接：先选一个目录作为云端'}
+              </div>
             </div>
             <div className="setting-control">
               <span className={`sync-dot${sync.loggedIn ? ' on' : ''}`} />
-              <button className="btn btn-ghost btn-sm" onClick={() => void connectSync()}>
-                {sync.loggedIn ? '重新登录' : '登录百度网盘'}
-              </button>
+              {syncSettings.provider === 'webdav' ? (
+                <button className="btn btn-ghost btn-sm" onClick={() => void logoutSync()}>
+                  退出登录
+                </button>
+              ) : (
+                <button className="btn btn-ghost btn-sm" onClick={() => void connectSync()}>
+                  {sync.loggedIn ? '更换目录' : '连接'}
+                </button>
+              )}
             </div>
           </div>
+
+          {syncSettings.provider === 'webdav' ? (
+            <>
+              <div className="setting-row">
+                <div>
+                  <div className="setting-label">服务器地址</div>
+                  <div className="setting-desc">坚果云：https://dav.jianguoyun.com/dav/</div>
+                </div>
+                <div className="setting-control">
+                  <input
+                    className="input"
+                    style={{ width: 250 }}
+                    placeholder="https://dav.example.com/dav/"
+                    value={dav.url}
+                    onChange={(e) => setDavDraft({ ...dav, url: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="setting-row">
+                <div>
+                  <div className="setting-label">账号</div>
+                  <div className="setting-desc">网盘的登录邮箱（坚果云用注册邮箱）</div>
+                </div>
+                <div className="setting-control">
+                  <input
+                    className="input"
+                    style={{ width: 250 }}
+                    value={dav.username}
+                    onChange={(e) => setDavDraft({ ...dav, username: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="setting-row">
+                <div>
+                  <div className="setting-label">应用密码</div>
+                  <div className="setting-desc">
+                    不是登录密码：坚果云在网页版「账户信息 → 安全选项 → 添加应用」生成。
+                    存进系统凭据加密，已保存过就留空
+                  </div>
+                </div>
+                <div className="setting-control">
+                  <input
+                    className="input"
+                    style={{ width: 250 }}
+                    type="password"
+                    placeholder="留空则沿用已保存的"
+                    value={dav.password}
+                    onChange={(e) => setDavDraft({ ...dav, password: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="setting-row">
+                <div>
+                  <div className="setting-label">保存并连接</div>
+                  <div className="setting-desc">会先验证一次地址与密码，然后立刻跑一轮同步</div>
+                </div>
+                <div className="setting-control">
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={davBusy}
+                    onClick={() => {
+                      setDavBusy(true)
+                      void configureWebdav({ url: dav.url, username: dav.username, password: dav.password }).finally(
+                        () => {
+                          setDavBusy(false)
+                          setDavDraft(null)
+                        }
+                      )
+                    }}
+                  >
+                    {davBusy ? '连接中…' : '保存并连接'}
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : null}
 
           <div className="setting-row">
             <div>
               <div className="setting-label">云端同步文件夹</div>
-              <div className="setting-desc">进度与书籍文件都会放在这个目录下，不存在时自动创建</div>
+              <div className="setting-desc">在云端目录下使用哪个子文件夹；不存在时自动创建</div>
             </div>
             <div className="setting-control">
               <input
@@ -423,7 +539,7 @@ export function SettingsPage() {
             <div>
               <div className="setting-label">同步书籍文件</div>
               <div className="setting-desc">
-                默认关闭：只同步阅读进度。开启后新导入的书籍会在勾选时上传（受网盘容量与限速影响）
+                当前版本只同步阅读进度。书籍本体上传（按 Book.syncUpload 逐本控制）尚未接入
               </div>
             </div>
             <div className="setting-control">
@@ -452,14 +568,14 @@ export function SettingsPage() {
             <div className="setting-control">
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => toast('info', '导出/导入进度文件将在同步阶段（M5）接入')}
+                onClick={() => toast('info', '导出/导入进度文件尚未接入')}
               >
                 <FileDown size={14} />
                 导出
               </button>
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => toast('info', '导出/导入进度文件将在同步阶段（M5）接入')}
+                onClick={() => toast('info', '导出/导入进度文件尚未接入')}
               >
                 <FileUp size={14} />
                 导入
@@ -553,7 +669,7 @@ export function SettingsPage() {
             界面预览（设计阶段临时入口）
           </h3>
           <div className="setting-hint">
-            同步引擎将在 M5 接入。这里可以单独预览同步相关的两个弹窗，正式接入后会移除。
+            同步引擎已接入（本地文件夹模式）。下面两个入口用于单独预览同步弹窗的界面。
           </div>
           <div className="setting-row">
             <div>

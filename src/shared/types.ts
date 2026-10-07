@@ -15,6 +15,11 @@ export interface Book {
   /** 书库内副本的绝对路径 */
   filePath: string
   fileSize: number
+  /**
+   * 文件内容的 sha1（跨设备对齐「同一本书」用）。
+   * 老数据为 null，首次同步时按需补齐并缓存回 library.json。
+   */
+  contentHash: string | null
   /** 封面文件绝对路径，解析失败时为 null */
   coverFile: string | null
   /** 封面主色（#rrggbb），用于卡片渐变 */
@@ -54,7 +59,7 @@ export interface Progress {
   rev: number
 }
 
-/** 按「书 + 天」聚合的阅读会话 */
+/** 按「书 + 天 + 设备」聚合的阅读会话（同步时每台设备各存一条，展示时相加） */
 export interface SessionRow {
   id: string
   bookId: string
@@ -63,6 +68,8 @@ export interface SessionRow {
   seconds: number
   firstAt: number
   lastAt: number
+  /** 这条时长来自哪台设备；老数据为空表示本机 */
+  deviceId?: string
 }
 
 export type ReaderTheme = 'paper' | 'sepia' | 'green' | 'night'
@@ -78,6 +85,17 @@ export interface ReaderSettings {
 }
 
 export interface SyncSettings {
+  /**
+   * 云端类型：
+   *  - local：本机目录当云端（用于测试与单机兜底）
+   *  - webdav：标准协议，坚果云等（应用密码走 HTTP Basic）
+   *  - baidu：应用内登录百度网盘（路线已定，尚未接入）
+   */
+  provider: 'local' | 'webdav' | 'baidu'
+  /** provider = local 时用作「云端」根目录的本机路径；未选择为 null */
+  localCloudDir: string | null
+  /** provider = webdav 时的连接信息（应用密码单独加密存放，不在这里） */
+  webdav: { url: string; username: string }
   /** 自动同步开关 */
   auto: boolean
   intervalMinutes: number
@@ -175,7 +193,7 @@ export type SyncPhase = 'idle' | 'checking' | 'running' | 'done' | 'error' | 'co
 
 export interface SyncTask {
   id: string
-  kind: 'progress' | 'book'
+  kind: 'progress' | 'book' | 'stats'
   bookId: string
   title: string
   direction: 'up' | 'down'

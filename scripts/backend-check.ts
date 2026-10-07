@@ -37,7 +37,7 @@ const store = new Store(dataDir)
 await store.init()
 check('数据目录已创建', existsSync(dataDir))
 check('四个数据文件初始化后可写', true)
-registerIpc(store, new SyncService())
+registerIpc(store, new SyncService(store))
 
 const imported = await importMany(store, sampleFiles)
 check('全部示例 EPUB 导入成功', imported.books.length === sampleFiles.length, `${imported.books.length}/${sampleFiles.length}`)

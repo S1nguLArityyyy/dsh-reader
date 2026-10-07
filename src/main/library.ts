@@ -7,6 +7,7 @@ import type { Store } from './store'
 import { extractEpub, readEpubMeta, type EpubMeta } from './epub'
 import { splitVolume, titleFromFileName } from './naming'
 import { countChapterChars, coverColorOf } from './textstats'
+import { sha1File } from './sync/fingerprint'
 import { percentByPosition } from '../shared/progress'
 
 export { splitVolume }
@@ -47,6 +48,9 @@ export async function importEpubFile(store: Store, sourcePath: string): Promise<
     await writeFile(coverFile, meta.coverData)
   }
 
+  // 内容指纹：跨设备同步时用来对齐「同一本书」；算不出来也不影响导入
+  const contentHash = await sha1File(destPath).catch(() => null)
+
   const book: Book = {
     id,
     title,
@@ -57,6 +61,7 @@ export async function importEpubFile(store: Store, sourcePath: string): Promise<
     fileName: basename(sourcePath),
     filePath: destPath,
     fileSize: info.size,
+    contentHash,
     coverFile,
     coverColor: coverColorOf(coverFile),
     chapterCount: meta.chapterHrefs.length,

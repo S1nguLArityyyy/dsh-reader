@@ -78,7 +78,20 @@ const api = {
     cancel: () => invoke<SyncState>('sync:cancel'),
     downloadAll: () => invoke<SyncState>('sync:downloadAll'),
     conflicts: () => invoke<ConflictItem[]>('sync:conflicts'),
-    resolve: (items: ConflictItem[], choice: 'local' | 'cloud') => invoke<SyncState>('sync:resolve', items, choice)
+    resolve: (items: ConflictItem[], choice: 'local' | 'cloud') => invoke<SyncState>('sync:resolve', items, choice),
+    /** 保存 WebDAV 连接信息并立刻验证 + 同步（密码只进主进程，不回传） */
+    configureWebdav: (payload: { url: string; username: string; password?: string }) =>
+      invoke<SyncState>('sync:configureWebdav', payload),
+    /** 退出登录：清掉已保存的应用密码 */
+    logout: () => invoke<SyncState>('sync:logout'),
+    /** 同步跑完（含自动同步）后主进程会通知刷新：进度 / 今日阅读 / 统计都可能变了 */
+    onChanged: (callback: () => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on('sync:changed', listener)
+      return () => {
+        ipcRenderer.removeListener('sync:changed', listener)
+      }
+    }
   }
 }
 

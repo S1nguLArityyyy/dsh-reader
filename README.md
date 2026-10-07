@@ -120,11 +120,14 @@ release/DshReader-0.1.0-portable/
 | 页面切换飞入飞出动效、弹窗底部飞入飞出、侧边栏系列展开动画（关闭窗口降频以免动画掉帧） | ✅ |
 | 数据持久化：`%APPDATA%\Dsh Reader` 下的 JSON（原子写入），退出前强制落盘 | ✅ |
 | 设置：阅读偏好（带实时预览）、数据目录、界面主题（浅色/深色） | ✅ |
-| 网盘同步：状态机 + 同步状态弹窗 + 冲突弹窗（界面完成，引擎待接入） | 🚧 M5 |
+| 同步：**阅读进度**与**阅读时长**双向同步、冲突检测与冲突弹窗、上次同步时间、手动 / 自动同步（启动后、退出前、按间隔） | ✅ |
+| 云端：**本地文件夹**（本机目录 / 共享盘）与 **WebDAV**（坚果云等，地址 + 账号 + 应用密码；密码走系统凭据加密，不写进 settings.json） | ✅ |
+| 同步引擎结构：`CloudProvider` 接口 + 每种云端一个实现（百度网盘 provider 待接入） | 🚧 |
 
 ## 尚未实现
 
-- 网盘同步引擎（百度网盘登录窗口、进度与书籍文件的上传下载、冲突检测）
+- 百度网盘内嵌登录窗口（扫码 / 短信验证码 + 登录态持久化）—— 接口位置已留好，写一个 provider 文件即可
+- 书籍文件的上传下载（当前同步阅读进度与阅读时长；「全部下载」只把进度以云端为准拉回）
 - 除 EPUB 外的格式：TXT / PDF / CBZ / MOBI / AZW3
 - 标签模块、书签笔记、全文搜索、手机端
 
@@ -139,7 +142,12 @@ src/
     epub.ts       EPUB 解析与正文净化
     library.ts    导入、分组、缓存解压
     stats.ts      统计与日历聚合
-    sync.ts       同步服务占位（M5 落地）
+  main/sync/     同步模块
+    provider.ts       CloudProvider 接口 + 云端路径归一化（拒穿越）
+    local-folder.ts   本地文件夹 provider（把本机目录当云端）
+    fingerprint.ts    书籍内容指纹（跨设备对齐同一本书）
+    engine.ts         同步引擎：清单 / 双向进度 / 冲突判定
+    index.ts          SyncService 门面（IPC 通道）
   preload/     contextBridge 暴露的 window.api
   renderer/    React 界面（页面 / 组件 / 状态 / 样式）
   shared/      跨进程共享类型
@@ -147,6 +155,7 @@ scripts/
   make-samples.mjs   生成示例 EPUB
   epub-check.mjs     EPUB 解析链路自检（不依赖 Electron）
   backend-check.mjs  后端集成自检（electron 模块用桩替换）
+  sync-check.ts      同步链路自检：三台「设备」+ 本地文件夹云端，含冲突与穿越用例
   electron-stub.ts   测试用 electron 桩
   dev.mjs            启动器：处理「Electron 在非 ASCII 路径无法启动」
   serve-web.mjs      浏览器预览的静态服务器
@@ -157,10 +166,12 @@ scripts/
 ## 自检
 
 ```bash
-npm run check        # 类型检查 + EPUB 解析 + 后端集成（一条命令跑完）
+npm run check        # 类型检查 + EPUB 解析 + 后端集成 + 同步链路（一条命令跑完）
 npm run typecheck    # 主进程 + 渲染进程类型检查
 npm run check:epub   # 解析示例 EPUB，校验元数据/封面/目录/正文净化
 npm run check:backend # 用桩替换 electron，在纯 Node 下跑导入→阅读→计时→统计→重启读回
+npm run check:sync   # 同步链路：三台「设备」+ 本地文件夹云端，含冲突裁决与路径穿越用例
+npm run sync:demo    # 单机模拟两台设备（两个窗口 + 共用一个云端目录），手动验收同步
 npm run shot:web     # 逐页截图到 shots/
 npm run shot         # 在 Electron 内逐页截图（需 ASCII 路径运行时）
 ```

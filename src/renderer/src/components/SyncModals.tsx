@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CloudDownload, RefreshCw } from 'lucide-react'
 import { useApp } from '../store/app'
-import { formatDateTime } from '../lib/format'
+import { formatDateTime, fileSizeText } from '../lib/format'
 import { Modal } from './ui'
 
 /** 同步状态弹窗（对齐参考图三：任务计数、进度条、上次同步时间、已传大小、三个操作） */
@@ -42,7 +42,7 @@ export function SyncStatusModal() {
       <div className="sync-line" style={{ marginTop: 14 }}>
         <span>上次同步时间：{formatDateTime(sync.lastSyncAt)}</span>
         <span className="sync-size">
-          {(sync.transferred / 1048576).toFixed(2)} MB / {(sync.total / 1048576).toFixed(2)} MB
+          {fileSizeText(sync.transferred)} / {fileSizeText(sync.total)}
         </span>
       </div>
 
@@ -69,7 +69,7 @@ export function SyncStatusModal() {
 
       {!sync.loggedIn ? (
         <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={() => void connectSync()}>
-          连接百度网盘
+          连接云端
         </button>
       ) : null}
     </Modal>

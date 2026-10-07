@@ -18,7 +18,7 @@ import { ensureExtracted, flattenToc, importMany, removeBook, scanEpubFiles } fr
 import { toMediaUrl } from './media'
 import { computeStats } from './stats'
 import type { Store } from './store'
-import type { SyncService } from './sync'
+import type { SyncService, WebDavConnectPayload } from './sync'
 
 interface BookMetaCache {
   toc: TocEntry[]
@@ -243,7 +243,7 @@ export function registerIpc(store: Store, sync: SyncService): void {
 
   handle('stats:get', (): StatsPayload => computeStats(store))
 
-  /* ---------------- 网盘同步（M5 落地，本阶段为状态占位） ---------------- */
+  /* ---------------- 网盘 / 云端同步 ---------------- */
 
   handle('sync:status', () => sync.status())
   handle('sync:connect', () => sync.connect())
@@ -252,6 +252,8 @@ export function registerIpc(store: Store, sync: SyncService): void {
   handle('sync:downloadAll', () => sync.downloadAll())
   handle('sync:conflicts', () => sync.pendingConflicts())
   handle('sync:resolve', (items: ConflictItem[], choice: 'local' | 'cloud') => sync.resolve(items, choice))
+  handle('sync:configureWebdav', (payload: WebDavConnectPayload) => sync.configureWebdav(payload))
+  handle('sync:logout', () => sync.logout())
 
   /* ---------------- 系统 ---------------- */
 
