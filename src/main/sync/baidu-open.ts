@@ -268,9 +268,11 @@ async function readCodeFromWindow(win: BrowserWindow): Promise<string> {
         /* 忽略 */
       }
     }
+    // 真正的授权码是 32 位十六进制、且页面里只有一个这样的串（已用转储文件验证过）—— 必须优先精确匹配，
+    // 否则宽泛模式会先抓到旁边无关的短串（实测抓到过 20 位的 → invalid_grant）
     const matched =
-      /(?:授权码|请复制|code)[^\w]{0,20}([A-Za-z0-9_-]{20,120})/.exec(text) ??
-      /\b([A-Za-z0-9]{32,120})\b/.exec(text)
+      /\b([0-9a-f]{32})\b/i.exec(text) ??
+      /(?:授权码|请复制)[^\w]{0,20}([A-Za-z0-9_-]{20,120})/.exec(text)
     if (matched) return matched[1]
   }
   return ''
