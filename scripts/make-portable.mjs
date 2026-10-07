@@ -7,7 +7,7 @@
  *
  * 用法：node scripts/make-portable.mjs
  */
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -75,7 +75,14 @@ if (insideProject) {
   console.log(`[portable] 部署目录在项目内（${deployDir}），跳过自动部署`)
 } else {
   try {
-    rmSync(deployDir, { recursive: true, force: true })
+    // 只删应用文件，保留用户数据 —— 之前整目录 rm 会把用户的书籍一起删掉（踩过一次，丢过 10 本书）
+    if (existsSync(deployDir)) {
+      const keepNames = ['books', 'covers', 'data', 'logs']
+      for (const entry of readdirSync(deployDir)) {
+        if (keepNames.includes(entry)) continue
+        rmSync(join(deployDir, entry), { recursive: true, force: true })
+      }
+    }
     cpSync(dest, deployDir, { recursive: true })
     console.log(`[portable] 已部署到：${deployDir}`)
     console.log(`[portable] 双击 ${join(deployDir, 'DshReader.exe')} 即可运行`)
