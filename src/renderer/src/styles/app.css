@@ -1537,7 +1537,7 @@
 .reader-page.paged svg {
   max-height: calc(var(--reader-col-height, 560px) - 56px);
   width: auto;
-  object-fit: cover; /* 填满容器 ✓ 缝彻底消失 ✓（138×200 ≈ 书封比例 ✓ 只裁掉几像素 ✓） */
+  object-fit: contain; /* 阅读器插图【完整显示】✓ 不要裁 ✗（今天误改过一次 ✓ 已改回 ✓） */
 }
 
 .reader-page h1,
