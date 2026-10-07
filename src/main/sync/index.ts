@@ -14,6 +14,7 @@ import { SyncEngine } from './engine'
 import { LocalFolderProvider } from './local-folder'
 import type { CloudProvider } from './provider'
 import { createSecretStore, type SecretStore } from './secret-store'
+import { PanWebProvider } from './pan-web'
 import { WebDavProvider } from './webdav'
 
 export interface SyncServiceOptions {
@@ -132,6 +133,10 @@ export class SyncService {
         return picked
       }
     })
+  }
+
+  private createPanWeb(): CloudProvider {
+    return new PanWebProvider({ log: this.options.log })
   }
 
   private createWebDav(): CloudProvider {

@@ -361,6 +361,7 @@ export function SettingsPage() {
               >
                 <option value="local">本地文件夹</option>
                 <option value="webdav">WebDAV（坚果云等）</option>
+                <option value="baidu">百度网盘（应用内登录）</option>
               </select>
             </div>
           </div>
