@@ -1,6 +1,5 @@
 import { createRoot } from 'react-dom/client'
 import App from './App'
-import { createMockApi } from './lib/mock-api'
 import './styles/base.css'
 import './styles/app.css'
 
@@ -9,7 +8,6 @@ if (!container) throw new Error('缺少 #root 容器')
 
 // 浏览器预览模式：没有 Electron 预加载脚本时，用内存数据顶上
 if (typeof window.api === 'undefined') {
-  ;(window as unknown as { api: unknown }).api = createMockApi()
   console.info('[Dsh Reader] 浏览器预览模式：数据为内存示例数据，不会写入磁盘')
 }
 
