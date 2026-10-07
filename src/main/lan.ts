@@ -54,6 +54,16 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
     void (async () => {
       try {
         const url = new URL(req.url ?? '/', 'http://localhost')
+        // 容错：手机端可能把地址填成 http://ip:8787/DshReader 之类 ✗
+        // 只要结尾是 books.json ✓ 或路径里含 books/<文件名> ✓ 就照常服务 ✓
+        {
+          const raw = decodeURIComponent(url.pathname)
+          if (raw.endsWith('/books.json') || raw === '/books.json') url.pathname = '/books.json'
+          else {
+            const at = raw.lastIndexOf('/books/')
+            if (at >= 0) url.pathname = raw.slice(at)
+          }
+        }
         if (req.method !== 'GET') {
           res.writeHead(405).end('only GET')
           return
