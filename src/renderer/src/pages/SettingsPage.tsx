@@ -29,7 +29,6 @@ export function SettingsPage() {
   const setSyncModal = useApp((s) => s.setSyncModal)
   const previewConflicts = useApp((s) => s.previewConflicts)
   const connectSync = useApp((s) => s.connectSync)
-  const configureWebdav = useApp((s) => s.configureWebdav)
   const logoutSync = useApp((s) => s.logoutSync)
   const markAllSyncUpload = useApp((s) => s.markAllSyncUpload)
   const toast = useApp((s) => s.toast)

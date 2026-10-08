@@ -91,11 +91,9 @@ export interface SyncSettings {
    *  - webdav：标准协议，坚果云等（应用密码走 HTTP Basic）
    *  - baidu：应用内登录百度网盘（路线已定，尚未接入）
    */
-  provider: 'local' | 'webdav' | 'baidu'
   /** provider = local 时用作「云端」根目录的本机路径；未选择为 null */
   localCloudDir: string | null
   /** provider = webdav 时的连接信息（应用密码单独加密存放，不在这里） */
-  webdav: { url: string; username: string }
   /** 自动同步开关 */
   auto: boolean
   /** 退出阅读（合上书）时立刻同步一次：进度与阅读时长 */

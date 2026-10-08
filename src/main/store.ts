@@ -73,9 +73,7 @@ export class Store {
         mode: 'scroll'
       },
       sync: {
-        provider: 'local',
         localCloudDir: null,
-        webdav: { url: '', username: '' },
         auto: false,
         onReaderClose: true,
         intervalMinutes: 10,
@@ -115,7 +113,6 @@ export class Store {
       sync: {
         ...defaults.sync,
         ...(saved.sync ?? {}),
-        webdav: { ...defaults.sync.webdav, ...(saved.sync?.webdav ?? {}) }
       },
       appearance: { ...defaults.appearance, ...(saved.appearance ?? {}) }
     }
