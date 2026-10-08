@@ -5,7 +5,6 @@ import {
   BookMarked,
   BookOpen,
   ChevronDown,
-  Cloud,
   Layers,
   Library,
   Settings as SettingsIcon
@@ -91,11 +90,6 @@ export function Sidebar() {
       </div>
 
       <div className="sidebar-foot">
-        <button className="sync-pill" onClick={() => setSyncModal(true)} title="打开同步状态">
-          <span className={`sync-dot${sync.loggedIn ? ' on' : ''}`} />
-          <span className="sync-label">{sync.loggedIn ? `已连接 ${sync.account ?? ''}` : '网盘未连接'}</span>
-          <Cloud size={15} />
-        </button>
         <button className={`nav-item${route === 'settings' ? ' active' : ''}`} onClick={() => go('settings')}>
           <SettingsIcon size={18} />
           <span>设置</span>
