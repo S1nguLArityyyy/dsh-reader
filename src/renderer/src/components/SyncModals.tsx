@@ -6,6 +6,14 @@ import { Modal } from './ui'
 
 /** 同步状态弹窗（对齐参考图三：任务计数、进度条、上次同步时间、已传大小、三个操作） */
 export function SyncStatusModal() {
+  // 面板打开期间轮询状态：否则进度与文案只在打开那一刻取一次快照，看起来像卡住不动
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const state = useApp.getState()
+      if (state.syncModalOpen) void state.loadSync()
+    }, 400)
+    return () => clearInterval(timer)
+  }, [])
   const open = useApp((s) => s.syncModalOpen)
   const sync = useApp((s) => s.sync)
   const setOpen = useApp((s) => s.setSyncModal)
