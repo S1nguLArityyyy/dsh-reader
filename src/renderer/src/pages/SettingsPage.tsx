@@ -384,7 +384,7 @@ export function SettingsPage() {
           <div className="setting-row">
             <div>
               <div className="setting-label">服务地址</div>
-              <div className="setting-desc">形如 http://192.168.x.x:8787，端口固定 8787</div>
+              <div className="setting-desc">把上面这个地址填进手机端的「局域网同步」，端口固定 8787。手机与电脑必须在同一个 WiFi 下；重启电脑或路由器后地址可能变化，以这里显示的为准。看不到地址时也可在命令行执行 ipconfig，取当前网卡的 IPv4 地址加 :8787</div>
             </div>
             <div className="setting-control">
               <span className="setting-hint">启动时写入 lan.txt</span>
