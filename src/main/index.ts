@@ -82,12 +82,7 @@ let hiddenTimer: NodeJS.Timeout | null = null
 /** 隐藏几分钟后释放窗口：后台只保留局域网服务，降低内存占用 */
 function scheduleIdleRelease(): void {
   if (hiddenTimer) clearTimeout(hiddenTimer)
-  // 隐藏即释放界面：内存降下来，后台只保留局域网服务
-  if (quitFromTray || !mainWindow || mainWindow.isVisible()) return
-  const target = mainWindow
-  mainWindow = null
-  log('[tray] 释放界面，后台只保留局域网服务')
-  target.destroy()
+  log('[tray] 已隐藏：渲染暂停，窗口保留（局域网服务继续运行）')
 }
 
 /** 托盘点击时确保有窗口可用 */
@@ -530,6 +525,11 @@ app.on('render-process-gone', (_event, _contents, details) =>
 )
 
 app.on('window-all-closed', () => {
+  // 有托盘就继续在后台提供局域网服务，只有托盘菜单的「退出」才真的退出
+  if (tray) {
+    log('[tray] 窗口已全部关闭，应用继续驻留托盘')
+    return
+  }
   if (process.platform !== 'darwin') app.quit()
 })
 
