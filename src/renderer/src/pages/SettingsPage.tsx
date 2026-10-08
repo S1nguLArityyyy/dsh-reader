@@ -23,6 +23,7 @@ const ACCENT_PRESETS = ['#3b6fd4', '#2fa36b', '#d97757', '#8b5cf6', '#e0a028', '
 
 export function SettingsPage() {
   const settings = useApp((s) => s.settings)
+  const [logOpen, setLogOpen] = useState(false)
   const info = useApp((s) => s.info)
   const sync = useApp((s) => s.sync)
   const saveSettings = useApp((s) => s.saveSettings)
@@ -313,53 +314,62 @@ export function SettingsPage() {
             </div>
           </div>
         </section>
-        {/* ---------- 更新记录 ---------- */}
+        {/* ---------- 关于 ---------- */}
         <section className="setting-card">
-          <h3>更新记录</h3>
-          <div className="setting-hint">只列功能与体验上的变化</div>
-
+          <h3>关于</h3>
           <div className="setting-row">
             <div>
-              <div className="setting-label">1.0 正式版</div>
-              <div className="setting-desc">
-                局域网直连：同一 WiFi 下与手机交换阅读记录和书籍，不再依赖网盘<br />
-                记录双向同步：阅读进度、阅读时长、读完标记<br />
-                桌面端改为服务端：开机即提供局域网服务，收到手机记录自动重读并刷新界面<br />
-                书架按系列归组、按卷号排序，支持整目录批量导入<br />
-                统计：阅读日历、阅读热力图、按区间汇总
-              </div>
+              <div className="setting-label">更新记录</div>
+              <div className="setting-desc">查看各版本的功能变化</div>
+            </div>
+            <div className="setting-control">
+              <button className="btn btn-ghost btn-sm" onClick={() => setLogOpen(true)}>
+                查看
+              </button>
             </div>
           </div>
 
-          <div className="setting-row">
-            <div>
-              <div className="setting-label">0.9</div>
-              <div className="setting-desc">
-                完成记录同步协议：进度按时间取新，时长按设备分别累计<br />
-                书籍增量传输：只发送手机缺少的那几本
+          {logOpen ? (
+            <div
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 900 }}
+              onClick={() => setLogOpen(false)}
+            >
+              <div
+                style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: 560, maxHeight: '76vh', background: 'var(--panel)', borderRadius: 14, padding: 20, overflowY: 'auto' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 style={{ margin: '0 0 14px' }}>更新记录</h3>
+                <div className="setting-desc" style={{ lineHeight: 1.9 }}>
+                  <b>1.0 正式版</b>
+                  <br />局域网直连：同一 WiFi 下与手机交换阅读记录和书籍，不再依赖网盘
+                  <br />记录双向同步：进度、时长、读完标记；桌面端作为服务端常驻
+                  <br />收到手机记录后自动重读并刷新界面
+                  <br />书架按系列归组、按卷号排序，支持整目录批量导入
+                  <br />统计：阅读日历、阅读热力图、按区间汇总
+                  <br />
+                  <br />
+                  <b>0.9</b>
+                  <br />记录同步协议完成：进度按时间取新，时长按设备分别累计
+                  <br />书籍增量传输：只发送手机缺少的那几本
+                  <br />
+                  <br />
+                  <b>0.8</b>
+                  <br />改用局域网直传书籍，速度提升到秒级
+                  <br />移除网盘与 WebDAV 同步
+                  <br />
+                  <br />
+                  <b>0.7</b>
+                  <br />阅读器：翻页模式、目录跳转、全文搜索、样式编辑
+                  <br />书库：搜索、多选管理、合集归组、导入进度
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+                  <button className="btn btn-primary btn-sm" onClick={() => setLogOpen(false)}>
+                    关闭
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="setting-row">
-            <div>
-              <div className="setting-label">0.8</div>
-              <div className="setting-desc">
-                改用局域网直传书籍，速度提升到秒级<br />
-                移除网盘与 WebDAV 同步，设置页只保留局域网
-              </div>
-            </div>
-          </div>
-
-          <div className="setting-row">
-            <div>
-              <div className="setting-label">0.7</div>
-              <div className="setting-desc">
-                阅读器：翻页模式、目录跳转、全文搜索、样式编辑<br />
-                书库：搜索、多选管理、合集归组、导入进度
-              </div>
-            </div>
-          </div>
+          ) : null}
         </section>
 
 
