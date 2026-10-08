@@ -1,8 +1,9 @@
-import { app, BrowserWindow, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, Menu, net, protocol, shell, Tray, nativeImage } from 'electron'
 import { appendFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { ipcMain } from 'electron'
 import { registerIpc } from './ipc'
 import { enrichBook, importMany } from './library'
 import { isInsideDataDir, setDataRoot } from './media'
@@ -71,6 +72,69 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+let tray: Tray | null = null
+let quitFromTray = false
+
+/** 托盘图标：打包后用 exe 自带的图标，开发时退回 Electron 的图标 */
+function createTrayIcon(): Electron.NativeImage {
+  const exeIcon = nativeImage.createFromPath(process.execPath)
+  if (!exeIcon.isEmpty()) return exeIcon
+  return nativeImage.createEmpty()
+}
+
+/** 托盘：左键切换主窗口，右键菜单可显示或退出 */
+function setupTray(win: BrowserWindow): void {
+  if (tray) return
+  try {
+    tray = new Tray(createTrayIcon())
+    tray.setToolTip('Dsh Reader 正在运行（手机可通过局域网同步）')
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        {
+          label: '显示主窗口',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.show()
+              mainWindow.focus()
+            } else {
+              // 托盘与开机自启（这三个直接注册，不经过 ipc.ts 的 store 桥）
+  ipcMain.handle('app:hideToTray', () => {
+    mainWindow?.hide()
+    return true
+  })
+  ipcMain.handle('app:getAutoLaunch', () => app.getLoginItemSettings().openAtLogin)
+  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean) => {
+    app.setLoginItemSettings({ openAtLogin: enabled === true, args: ['--hidden'] })
+    return app.getLoginItemSettings().openAtLogin
+  })
+  mainWindow = createWindow()
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: '退出',
+          click: () => {
+            quitFromTray = true
+            app.quit()
+          }
+        }
+      ])
+    )
+    tray.on('click', () => {
+      if (!mainWindow) return
+      if (mainWindow.isVisible()) mainWindow.hide()
+      else {
+        mainWindow.show()
+        mainWindow.focus()
+      }
+    })
+  } catch (error) {
+    log('[tray] 创建托盘失败', String(error))
+  }
+  void win
+}
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
@@ -92,7 +156,12 @@ function createWindow(): BrowserWindow {
   })
 
   win.on('ready-to-show', () => {
-    win.show()
+    // 开机自启带 --hidden 时静默进托盘
+    if (process.argv.includes('--hidden')) {
+      log('[startup] --hidden：只驻留托盘')
+    } else {
+      win.show()
+    }
   })
   win.on('closed', () => {
     mainWindow = null
@@ -216,8 +285,19 @@ async function bootstrap(): Promise<void> {
   } catch (error) {
     log(`[lan] 启动失败（端口 8787 被占用？）：${String(error)}`)
   }
+  // 托盘与开机自启（这三个直接注册，不经过 ipc.ts 的 store 桥）
+  ipcMain.handle('app:hideToTray', () => {
+    mainWindow?.hide()
+    return true
+  })
+  ipcMain.handle('app:getAutoLaunch', () => app.getLoginItemSettings().openAtLogin)
+  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean) => {
+    app.setLoginItemSettings({ openAtLogin: enabled === true, args: ['--hidden'] })
+    return app.getLoginItemSettings().openAtLogin
+  })
   mainWindow = createWindow()
   const win = mainWindow
+  setupTray(win)
 
   if (shotDir) {
     win.webContents.once('did-finish-load', () => {
@@ -267,7 +347,17 @@ app.whenReady().then(() => {
   void bootstrap()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = createWindow()
+      // 托盘与开机自启（这三个直接注册，不经过 ipc.ts 的 store 桥）
+  ipcMain.handle('app:hideToTray', () => {
+    mainWindow?.hide()
+    return true
+  })
+  ipcMain.handle('app:getAutoLaunch', () => app.getLoginItemSettings().openAtLogin)
+  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean) => {
+    app.setLoginItemSettings({ openAtLogin: enabled === true, args: ['--hidden'] })
+    return app.getLoginItemSettings().openAtLogin
+  })
+  mainWindow = createWindow()
       void loadRoute(mainWindow, 'library', '')
     }
   })

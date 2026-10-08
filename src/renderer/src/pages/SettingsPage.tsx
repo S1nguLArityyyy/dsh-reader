@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   AlertTriangle,
   Cloud,
@@ -23,6 +23,20 @@ const ACCENT_PRESETS = ['#3b6fd4', '#2fa36b', '#d97757', '#8b5cf6', '#e0a028', '
 
 export function SettingsPage() {
   const settings = useApp((s) => s.settings)
+  const [autoLaunch, setAutoLaunch] = useState(false)
+
+  // 开机自启的状态读自系统，不在我们自己的配置里存一份
+  useEffect(() => {
+    void window.api.app
+      .getAutoLaunch()
+      .then(setAutoLaunch)
+      .catch(() => undefined)
+  }, [])
+
+  const toggleAutoLaunch = async (): Promise<void> => {
+    const next = await window.api.app.setAutoLaunch(!autoLaunch)
+    setAutoLaunch(next)
+  }
   const [logOpen, setLogOpen] = useState(false)
   const info = useApp((s) => s.info)
   const sync = useApp((s) => s.sync)
@@ -314,6 +328,35 @@ export function SettingsPage() {
             </div>
           </div>
         </section>
+        {/* ---------- 启动与托盘 ---------- */}
+        <section className="setting-card">
+          <h3>启动与托盘</h3>
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">开机自启</div>
+              <div className="setting-desc">登录 Windows 后自动在后台启动并驻留托盘，不弹窗</div>
+            </div>
+            <div className="setting-control">
+              <button className="btn btn-ghost btn-sm" onClick={() => void toggleAutoLaunch()}>
+                {autoLaunch ? '已开启 · 点击关闭' : '已关闭 · 点击开启'}
+              </button>
+            </div>
+          </div>
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">隐藏到托盘</div>
+              <div className="setting-desc">
+                隐藏窗口但保持局域网服务，手机仍可同步；要退出请用托盘图标右键菜单
+              </div>
+            </div>
+            <div className="setting-control">
+              <button className="btn btn-ghost btn-sm" onClick={() => void window.api.app.hideToTray()}>
+                隐藏
+              </button>
+            </div>
+          </div>
+        </section>
+
         {/* ---------- 关于 ---------- */}
         <section className="setting-card">
           <h3>关于</h3>

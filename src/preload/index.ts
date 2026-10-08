@@ -22,6 +22,12 @@ export interface ImportResult {
 const api = {
   app: {
     info: () => invoke<AppInfo>('app:info'),
+    /** 把主窗口隐藏到托盘（局域网服务继续运行） */
+    hideToTray: () => invoke<boolean>('app:hideToTray'),
+    /** 是否已设置开机自启（状态读自系统） */
+    getAutoLaunch: () => invoke<boolean>('app:getAutoLaunch'),
+    /** 设置开机自启，返回设置后的真实状态 */
+    setAutoLaunch: (enabled: boolean) => invoke<boolean>('app:setAutoLaunch', enabled),
     openPath: (target: string) => invoke<string>('shell:openPath', target),
     /** 拖拽导入时把浏览器 File 还原成本地绝对路径 */
     pathForFile: (file: File) => webUtils.getPathForFile(file)
