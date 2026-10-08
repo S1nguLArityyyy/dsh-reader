@@ -313,6 +313,55 @@ export function SettingsPage() {
             </div>
           </div>
         </section>
+        {/* ---------- 更新记录 ---------- */}
+        <section className="setting-card">
+          <h3>更新记录</h3>
+          <div className="setting-hint">只列功能与体验上的变化</div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">1.0 正式版</div>
+              <div className="setting-desc">
+                局域网直连：同一 WiFi 下与手机交换阅读记录和书籍，不再依赖网盘<br />
+                记录双向同步：阅读进度、阅读时长、读完标记<br />
+                桌面端改为服务端：开机即提供局域网服务，收到手机记录自动重读并刷新界面<br />
+                书架按系列归组、按卷号排序，支持整目录批量导入<br />
+                统计：阅读日历、阅读热力图、按区间汇总
+              </div>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">0.9</div>
+              <div className="setting-desc">
+                完成记录同步协议：进度按时间取新，时长按设备分别累计<br />
+                书籍增量传输：只发送手机缺少的那几本
+              </div>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">0.8</div>
+              <div className="setting-desc">
+                改用局域网直传书籍，速度提升到秒级<br />
+                移除网盘与 WebDAV 同步，设置页只保留局域网
+              </div>
+            </div>
+          </div>
+
+          <div className="setting-row">
+            <div>
+              <div className="setting-label">0.7</div>
+              <div className="setting-desc">
+                阅读器：翻页模式、目录跳转、全文搜索、样式编辑<br />
+                书库：搜索、多选管理、合集归组、导入进度
+              </div>
+            </div>
+          </div>
+        </section>
+
 
         {/* ---------- 网盘同步 ---------- */}
         {/* ---------- 局域网服务 ---------- */}
