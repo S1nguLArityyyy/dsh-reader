@@ -143,10 +143,26 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
           await writeFile(join(dir, 'progress.json.bak'), JSON.stringify(before.progress ?? {}, null, 2), 'utf8').catch(() => undefined)
           await writeFile(join(dir, 'sessions.json.bak'), JSON.stringify(before.sessions ?? [], null, 2), 'utf8').catch(() => undefined)
 
+          // 排查用：把收到的原始内容留一份（只保留键与时间戳，体积很小）
+          try {
+            const dump = {
+              at: Date.now(),
+              progressKeys: Object.keys(payload.progress ?? {}),
+              progressStamps: Object.fromEntries(
+                Object.entries(payload.progress ?? {}).map(([k, v]) => [k, Number((v as Record<string, unknown>)?.updatedAt ?? -1)])
+              ),
+              sessionsCount: (payload.sessions ?? []).length
+            }
+            await writeFile(join(dir, 'last-push.json'), JSON.stringify(dump, null, 2), 'utf8')
+          } catch {
+            /* 诊断写入失败不影响同步 */
+          }
+
           let progressMerged = 0
           const progress = { ...(before.progress ?? {}) }
           for (const [rawId, record] of Object.entries(payload.progress ?? {})) {
-            const key = hashToId.get(String(rawId).toLowerCase()) ?? String(rawId)
+            const bare = String(rawId).toLowerCase().replace(/^sha1:/, '')
+            const key = hashToId.get(bare) ?? hashToId.get(String(rawId).toLowerCase()) ?? String(rawId)
             const incoming = record as Record<string, unknown>
             const mine = progress[key]
             if (Number(incoming?.updatedAt ?? 0) > Number(mine?.updatedAt ?? 0)) {
@@ -158,7 +174,8 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
           const rows = [...(before.sessions ?? [])]
           for (const incoming of payload.sessions ?? []) {
             const rawId = String(incoming.bookId ?? '')
-            const key = hashToId.get(rawId.toLowerCase()) ?? rawId
+            const bareSession = rawId.toLowerCase().replace(/^sha1:/, '')
+            const key = hashToId.get(bareSession) ?? hashToId.get(rawId.toLowerCase()) ?? rawId
             const day = String(incoming.day ?? '')
             if (!key || !day) continue
             const deviceId = String(incoming.deviceId ?? 'mobile')
