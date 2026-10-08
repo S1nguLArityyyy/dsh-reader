@@ -82,7 +82,12 @@ let hiddenTimer: NodeJS.Timeout | null = null
 /** 隐藏几分钟后释放窗口：后台只保留局域网服务，降低内存占用 */
 function scheduleIdleRelease(): void {
   if (hiddenTimer) clearTimeout(hiddenTimer)
-  log('[tray] 已隐藏：渲染与定时器暂停，局域网服务继续运行')
+  // 隐藏即释放界面：内存降下来，后台只保留局域网服务
+  if (quitFromTray || !mainWindow || mainWindow.isVisible()) return
+  const target = mainWindow
+  mainWindow = null
+  log('[tray] 释放界面，后台只保留局域网服务')
+  target.destroy()
 }
 
 /** 托盘点击时确保有窗口可用 */
