@@ -136,6 +136,12 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
           for (const item of readBooks ?? []) {
             if (item?.id && item.contentHash) hashToId.set(String(item.contentHash).toLowerCase(), item.id)
           }
+          // 键归一：手机推来的是 sha1:<hex>，书目里是 uuid，历史数据里两种都存过
+          // 归一后按 (书, 日期, 设备) 去重取较大值，否则同一本书会被算两遍
+          const canonBookId = (id: string): string => {
+            const bareId = String(id ?? '').toLowerCase().replace(/^sha1:/, '')
+            return hashToId.get(bareId) ?? String(id)
+          }
           const before = {
             progress: (await readJson('progress')) as Record<string, Record<string, unknown>> | null,
             sessions: (await readJson('sessions')) as Array<Record<string, unknown>> | null
@@ -158,8 +164,13 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
             /* 诊断写入失败不影响同步 */
           }
 
+          const progress: Record<string, Record<string, unknown>> = {}
+          for (const [rawKey, row] of Object.entries(before.progress ?? {})) {
+            const key = canonBookId(rawKey)
+            const prev = progress[key]
+            if (!prev || Number(row?.updatedAt ?? 0) > Number(prev?.updatedAt ?? 0)) progress[key] = { ...row, bookId: key }
+          }
           let progressMerged = 0
-          const progress = { ...(before.progress ?? {}) }
           for (const [rawId, record] of Object.entries(payload.progress ?? {})) {
             const bare = String(rawId).toLowerCase().replace(/^sha1:/, '')
             const key = hashToId.get(bare) ?? hashToId.get(String(rawId).toLowerCase()) ?? String(rawId)
@@ -171,7 +182,16 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
             }
           }
           let sessionsMerged = 0
-          const rows = [...(before.sessions ?? [])]
+          const deduped = new Map<string, Record<string, unknown>>()
+          for (const row of before.sessions ?? []) {
+            const bookKey = canonBookId(String(row.bookId))
+            const dedupKey = bookKey + '|' + String(row.day) + '|' + String(row.deviceId ?? 'desktop')
+            const prev = deduped.get(dedupKey)
+            if (!prev || Number(row.seconds ?? 0) > Number(prev.seconds ?? 0)) {
+              deduped.set(dedupKey, { ...row, bookId: bookKey })
+            }
+          }
+          const rows = [...deduped.values()]
           for (const incoming of payload.sessions ?? []) {
             const rawId = String(incoming.bookId ?? '')
             const bareSession = rawId.toLowerCase().replace(/^sha1:/, '')
