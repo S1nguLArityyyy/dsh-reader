@@ -138,8 +138,12 @@ async function applyTrayIcon(): Promise<void> {
 function setupTray(win: BrowserWindow): void {
   if (tray) return
   try {
-    tray = new Tray(nativeImage.createEmpty())
-    void applyTrayIcon()
+    // 创建托盘时就带上真图标：Windows 上用空图标建的托盘不会显示，事后补不回来
+    // 图标来自打包进 resources 的 icon.png（见 electron-builder.yml 的 extraResources）
+    const trayIconPath = join(process.resourcesPath, 'icon.png')
+    const trayIcon = nativeImage.createFromPath(trayIconPath)
+    tray = new Tray(trayIcon.isEmpty() ? nativeImage.createEmpty() : trayIcon.resize({ width: 16, height: 16 }))
+    log('[tray] 图标来源 ' + trayIconPath + ' 可用=' + !trayIcon.isEmpty())
     tray.setToolTip('Dsh Reader 正在运行（手机可通过局域网同步）')
     tray.setContextMenu(
       Menu.buildFromTemplate([
