@@ -1,5 +1,5 @@
 import appIcon from '../assets/app-icon.png'
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import {
   BarChart3,
   BookMarked,
@@ -19,6 +19,26 @@ export function Sidebar() {
   const refreshAll = useApp((s) => s.refreshAll)
   const [lanOpen, setLanOpen] = useState(false)
   const [lanBusy, setLanBusy] = useState(false)
+  // 面板打开时重新取一次并轮询：启动时缓存的 info 里还没有局域网地址，服务是随后才起来的
+  const [lan, setLan] = useState<Awaited<ReturnType<typeof window.api.app.info>> | null>(null)
+  useEffect(() => {
+    if (!lanOpen) return
+    let alive = true
+    const tick = (): void => {
+      void window.api.app
+        .info()
+        .then((next) => {
+          if (alive) setLan(next)
+        })
+        .catch(() => undefined)
+    }
+    tick()
+    const timer = setInterval(tick, 500)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [lanOpen])
   const books = useApp((s) => s.books)
   const seriesFilter = useApp((s) => s.seriesFilter)
   const setSeriesFilter = useApp((s) => s.setSeriesFilter)
@@ -95,8 +115,8 @@ export function Sidebar() {
 
       <div className="sidebar-foot">
         <button className="sync-pill" onClick={() => setLanOpen(true)} title="局域网服务状态">
-          <span className={`sync-dot${info?.lanUrl ? ' on' : ''}`} />
-          <span className="sync-label">{info?.lanUrl ? `局域网 ${info.lanUrl.replace(/^https?:\/\//, '')}` : '局域网未启动'}</span>
+          <span className={`sync-dot${lan?.lanUrl ? ' on' : ''}`} />
+          <span className="sync-label">{lan?.lanUrl ? `局域网 ${lan!.lanUrl.replace(/^https?:\/\//, '')}` : '局域网未启动'}</span>
         </button>
         {lanOpen ? (
           <div
@@ -111,15 +131,15 @@ export function Sidebar() {
               <div className="setting-row">
                 <div>
                   <div className="setting-label">服务地址</div>
-                  <div className="setting-desc">{info?.lanUrl || '未启动'}</div>
+                  <div className="setting-desc">{lan?.lanUrl || '未启动'}</div>
                 </div>
               </div>
               <div className="setting-row">
                 <div>
                   <div className="setting-label">最近收到手机记录</div>
                   <div className="setting-desc">
-                    {info?.lastRecordPush?.at
-                      ? new Date(info.lastRecordPush.at).toLocaleString() + ` · 进度 +${info.lastRecordPush.progress} · 时长 +${info.lastRecordPush.sessions}`
+                    {lan?.lastRecordPush?.at
+                      ? new Date(lan.lastRecordPush.at).toLocaleString() + ` · 进度 +${lan.lastRecordPush.progress} · 时长 +${lan.lastRecordPush.sessions}`
                       : '还没有'}
                   </div>
                 </div>
