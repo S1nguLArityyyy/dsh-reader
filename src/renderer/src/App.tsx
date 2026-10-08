@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { BarChart3, Library, Settings as SettingsIcon, Upload } from 'lucide-react'
 import { useApp, type Route } from './store/app'
 import { Sidebar } from './components/Sidebar'
-import { ConflictModal, SyncStatusModal } from './components/SyncModals'
 import { Toaster } from './components/ui'
 import { BookDetailModal } from './components/BookDetailModal'
 import { LibraryPage } from './pages/LibraryPage'
@@ -123,8 +122,6 @@ export default function App() {
     return (
       <>
         <ReaderPage />
-        <SyncStatusModal />
-        <ConflictModal />
         <Toaster />
       </>
     )
@@ -163,8 +160,6 @@ export default function App() {
       ) : null}
 
       <BookDetailModal />
-      <SyncStatusModal />
-      <ConflictModal />
       <Toaster />
     </>
   )

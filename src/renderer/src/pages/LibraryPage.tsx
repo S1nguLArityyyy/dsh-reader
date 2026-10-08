@@ -44,7 +44,6 @@ export function LibraryPage() {
   const importFolderDialog = useApp((s) => s.importFolderDialog)
   const openReader = useApp((s) => s.openReader)
   const openDetail = useApp((s) => s.openDetail)
-  const runSync = useApp((s) => s.runSync)
   const refreshAll = useApp((s) => s.refreshAll)
   const removeBook = useApp((s) => s.removeBook)
   const updateBook = useApp((s) => s.updateBook)
@@ -261,9 +260,6 @@ export function LibraryPage() {
               显示全部
             </button>
           ) : null}
-          <button className="icon-btn" title="同步阅读记录" onClick={() => void runSync()}>
-            <RefreshCw size={19} />
-          </button>
           <button
             className={`icon-btn${selectMode ? ' active' : ''}`}
             title={selectMode ? '退出多选' : '多选管理'}
