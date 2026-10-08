@@ -1,5 +1,3 @@
-import { BAIDU_APP_KEY, BAIDU_SECRET_KEY } from './baidu-credentials'
-import { logSync } from './sync/webdav'
 import { app, BrowserWindow, net, protocol, shell } from 'electron'
 import { appendFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -11,7 +9,6 @@ import { isInsideDataDir, setDataRoot } from './media'
 import { seedDemoStats } from './devseed'
 import { Store, resolveDataDir } from './store'
 import { startLanServer } from './lan'
-import { SyncService } from './sync'
 
 app.setName('Dsh Reader')
 
@@ -57,9 +54,6 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow: BrowserWindow | null = null
 let store: Store | null = null
-let syncService: SyncService | null = null
-/** 上一次自动同步的时间，用来判断是否到了设置的间隔 */
-let lastAutoSyncAt = 0
 
 const shotDir = process.env.DSH_SHOT_DIR
 const shotList = (process.env.DSH_SHOT_LIST ?? 'library').split(',').map((s) => s.trim()).filter(Boolean)
@@ -178,17 +172,7 @@ async function bootstrap(): Promise<void> {
     return net.fetch(pathToFileURL(raw).toString())
   })
 
-  syncService = new SyncService(localStore, {
-      baiduAppKey: BAIDU_APP_KEY,
-      baiduSecretKey: BAIDU_SECRET_KEY,
-      log: (line: string) => {
-        // 同步日志落盘（userData/logs/sync.log）：排查"卡在哪一步 / 为什么跳过"靠它
-        void logSync(line)
-        log(line)
-      },
-      onChanged: notifySyncChanged
-    })
-  registerIpc(localStore, syncService)
+  registerIpc(localStore)
 
   // 局域网书籍直传：手机在同一个 WiFi 下可直接高速拉取本机书库（不经网盘、不限速）
   try {
@@ -233,12 +217,6 @@ async function bootstrap(): Promise<void> {
     void backfillLibrary(localStore, win)
   })
 
-  // 自动同步：启动后先来一次，之后按设置的间隔由定时器触发
-  if (localStore.settings.sync.auto && syncService.isConfigured()) {
-    lastAutoSyncAt = Date.now()
-    setTimeout(() => void syncService?.run(), 3000)
-  }
-  startAutoSync()
 }
 
 /** 同步跑完后通知界面刷新：进度、今日阅读显示的是哪本书、统计数字都可能变了 */
@@ -247,21 +225,6 @@ function notifySyncChanged(): void {
 }
 
 /** 每分钟检查一次是否到了自动同步间隔；改设置不用重建定时器 */
-function startAutoSync(): void {
-  const timer = setInterval(() => {
-    if (!store || !syncService) return
-    const config = store.settings.sync
-    if (!config.auto || !syncService.isConfigured()) return
-    const intervalMs = Math.max(1, config.intervalMinutes) * 60_000
-    if (Date.now() - lastAutoSyncAt < intervalMs) return
-    lastAutoSyncAt = Date.now()
-    void syncService
-      .run()
-      .then((state) => log(`[sync] 自动同步：${state.phase} ${state.message ?? ''}`))
-      .catch((err) => log('[sync] 自动同步失败', err))
-  }, 60_000)
-  timer.unref?.()
-}
 
 /** 后台补齐旧书信息，每补一本就通知渲染进程刷新 */
 async function backfillLibrary(store: Store, win: BrowserWindow): Promise<void> {
@@ -321,12 +284,5 @@ app.on('before-quit', (event) => {
   }
 
   // 退出前同步一次（已连接云端就做，最多等 3 秒，绝不拖住退出）
-  if (syncService && syncService.isConfigured()) {
-    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000))
-    void Promise.race([syncService.run().then(() => undefined), timeout])
-      .catch((err) => log('[quit] 退出前同步失败', err))
-      .then(flushAndQuit)
-    return
-  }
   flushAndQuit()
 })

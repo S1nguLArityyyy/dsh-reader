@@ -18,7 +18,6 @@ import { ensureExtracted, flattenToc, importMany, removeBook, scanEpubFiles } fr
 import { toMediaUrl } from './media'
 import { computeStats } from './stats'
 import type { Store } from './store'
-import type { SyncService, WebDavConnectPayload } from './sync'
 
 interface BookMetaCache {
   toc: TocEntry[]
@@ -63,7 +62,7 @@ async function loadBookMeta(store: Store, book: Book): Promise<BookMetaCache> {
   return value
 }
 
-export function registerIpc(store: Store, sync: SyncService): void {
+export function registerIpc(store: Store): void {
   const handle = (channel: string, fn: (...args: any[]) => unknown): void => {
     ipcMain.handle(channel, async (_event, ...args: any[]) => fn(...args))
   }
@@ -274,17 +273,7 @@ export function registerIpc(store: Store, sync: SyncService): void {
 
   /* ---------------- 网盘 / 云端同步 ---------------- */
 
-  handle('sync:status', () => sync.status())
-  handle('sync:connect', () => sync.connect())
-  handle('sync:run', () => sync.run())
-  handle('sync:cancel', () => sync.cancel())
-  handle('sync:downloadAll', () => sync.downloadAll())
-  handle('sync:conflicts', () => sync.pendingConflicts())
-  handle('sync:resolve', (items: ConflictItem[], choice: 'local' | 'cloud') => sync.resolve(items, choice))
-  handle('sync:configureWebdav', (payload: WebDavConnectPayload) => sync.configureWebdav(payload))
-  handle('sync:logout', () => sync.logout())
   /** 退出阅读时顺手同步（主进程延迟一点点再跑，不阻塞界面） */
-  handle('sync:afterReading', () => sync.afterReading())
 
   /* ---------------- 系统 ---------------- */
 

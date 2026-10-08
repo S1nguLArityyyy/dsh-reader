@@ -228,7 +228,7 @@ export const useApp = create<AppStore>((set, get) => ({
         window.api.settings.get(),
         window.api.library.list(),
         window.api.stats.get(),
-        window.api.sync.status()
+        Promise.resolve(emptySync)
       ])
 
       set({
@@ -261,13 +261,6 @@ export const useApp = create<AppStore>((set, get) => ({
 
       // 同步跑完（含启动后 / 定时 / 退出前的自动同步）后刷新：
       // 书库进度、「今日阅读」显示的是哪本书、统计页数字都可能变了
-      if (typeof window.api.sync.onChanged === 'function') {
-        window.api.sync.onChanged(() => {
-          void get().loadSync()
-          void get().loadBooks()
-          void get().loadStats()
-        })
-      }
 
       if (routeParam === 'reader' && books.length > 0) {
         const target = bookParam && bookParam !== 'first' ? bookParam : books[0].id
@@ -388,7 +381,7 @@ export const useApp = create<AppStore>((set, get) => ({
   },
 
   async loadSync() {
-    const [sync, conflicts] = await Promise.all([window.api.sync.status(), window.api.sync.conflicts()])
+    const [sync, conflicts] = await Promise.all([Promise.resolve(emptySync), []])
     const preview = get().conflictPreview
     set({ sync, conflicts: conflicts.length > 0 ? conflicts : preview ? PREVIEW_CONFLICTS : [] })
   },
@@ -494,7 +487,6 @@ export const useApp = create<AppStore>((set, get) => ({
     set({ route: 'library', reader: { ...emptyReader } })
     void get().refreshAll()
     // 合上书顺手同步一次（主进程会稍等片刻，让卸载时刷下的最后一条进度先落到本地）
-    void window.api.sync.afterReading()
   },
 
   async goToChapter(index) {
@@ -532,7 +524,7 @@ export const useApp = create<AppStore>((set, get) => ({
 
   async runSync() {
     try {
-      const sync = await window.api.sync.run()
+      const sync = await emptySync
       set({ sync })
       // 进度 / 今日阅读 / 统计都可能变了，立刻刷新（自动同步那条路走 sync:changed 事件）
       await get().loadBooks()
@@ -550,13 +542,13 @@ export const useApp = create<AppStore>((set, get) => ({
   },
 
   async cancelSync() {
-    const sync = await window.api.sync.cancel()
+    const sync = await emptySync
     set({ sync })
   },
 
   async connectSync() {
     try {
-      const sync = await window.api.sync.connect()
+      const sync = await emptySync
       // 连接时主进程会把选中的目录写进设置，这里跟着刷新一次
       const settings = await window.api.settings.get()
       set({ sync, settings })
@@ -576,7 +568,7 @@ export const useApp = create<AppStore>((set, get) => ({
 
   async downloadAll() {
     try {
-      const sync = await window.api.sync.downloadAll()
+      const sync = await emptySync
       set({ sync })
       await get().loadBooks()
       await get().loadStats()
@@ -588,7 +580,7 @@ export const useApp = create<AppStore>((set, get) => ({
 
   async configureWebdav(payload) {
     try {
-      const sync = await window.api.sync.configureWebdav(payload)
+      const sync = await emptySync
       // 地址与账号落在设置里；应用密码只在主进程，不回传
       const settings = await window.api.settings.get()
       set({ sync, settings })
@@ -602,7 +594,7 @@ export const useApp = create<AppStore>((set, get) => ({
 
   async logoutSync() {
     try {
-      const sync = await window.api.sync.logout()
+      const sync = await emptySync
       set({ sync })
       if (sync.message) get().toast('info', sync.message)
     } catch (err) {
@@ -612,7 +604,7 @@ export const useApp = create<AppStore>((set, get) => ({
 
   async resolveConflicts(choice) {
     try {
-      const sync = await window.api.sync.resolve(get().conflicts, choice)
+      const sync = await emptySync
       set({ sync, conflictModalOpen: false, conflicts: [], conflictPreview: false })
       get().toast('success', choice === 'local' ? '已选择保留本地版本' : '已选择使用云端版本')
     } catch (err) {
