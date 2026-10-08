@@ -82,12 +82,7 @@ let hiddenTimer: NodeJS.Timeout | null = null
 /** 隐藏几分钟后释放窗口：后台只保留局域网服务，降低内存占用 */
 function scheduleIdleRelease(): void {
   if (hiddenTimer) clearTimeout(hiddenTimer)
-  hiddenTimer = setTimeout(() => {
-    if (!mainWindow || mainWindow.isVisible()) return
-    log('[tray] 后台闲置，释放窗口（局域网服务继续运行）')
-    mainWindow.destroy()
-    mainWindow = null
-  }, 3 * 60 * 1000)
+  log('[tray] 已隐藏：渲染与定时器暂停，局域网服务继续运行')
 }
 
 /** 托盘点击时确保有窗口可用 */
@@ -239,7 +234,7 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       // 窗口失焦时不要降频：切回来第一次动画才不会掉帧
-      backgroundThrottling: false
+      // 保留默认的后台节流：窗口隐藏时停止渲染与定时器，可见时不受影响
     }
   })
 
