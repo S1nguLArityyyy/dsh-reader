@@ -466,6 +466,23 @@ export function LibraryPage() {
                   <h2 className="section-title">
                     {group.title}
                     <span className="section-count">{group.books.length}</span>
+{selectMode ? (
+                  <button
+                    className={`book-check${group.books.every((b) => selected.includes(b.id)) ? ' on' : ''}`}
+                    title="选中/取消本合集全部书籍"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      const ids = group.books.map((b) => b.id)
+                      const allChosen = ids.every((id) => selected.includes(id))
+                      ids.forEach((id) => {
+                        const has = selected.includes(id)
+                        if (allChosen ? has : !has) toggleSelected(id)
+                      })
+                    }}
+                  >
+                    {group.books.every((b) => selected.includes(b.id)) ? <Check size={14} /> : null}
+                  </button>
+                ) : null}
                     {group.manual ? <span className="group-tag manual">手动合集</span> : null}
                     {group.fuzzy ? <span className="group-tag fuzzy">模糊匹配</span> : null}
                   </h2>
