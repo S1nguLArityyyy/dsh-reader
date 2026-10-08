@@ -153,6 +153,12 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
           }
           // 键归一：手机推来的是 sha1:<hex>，书目里是 uuid，历史数据里两种都存过
           // 归一后按 (书, 日期, 设备) 去重取较大值，否则同一本书会被算两遍
+          // 设备身份归一：空值或早期的 mobile 都算作手机，避免同一段阅读被记成两台设备
+          const canonDeviceId = (id: unknown): string => {
+            const v = String(id ?? '').trim()
+            if (!v || v === 'mobile') return 'mobile-local'
+            return v
+          }
           const canonBookId = (id: string): string => {
             const bareId = String(id ?? '').toLowerCase().replace(/^sha1:/, '')
             return hashToId.get(bareId) ?? String(id)
@@ -200,7 +206,7 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
           const deduped = new Map<string, Record<string, unknown>>()
           for (const row of before.sessions ?? []) {
             const bookKey = canonBookId(String(row.bookId))
-            const dedupKey = bookKey + '|' + String(row.day) + '|' + String(row.deviceId ?? 'desktop')
+            const dedupKey = bookKey + '|' + String(row.day) + '|' + canonDeviceId(row.deviceId)
             const prev = deduped.get(dedupKey)
             if (!prev || Number(row.seconds ?? 0) > Number(prev.seconds ?? 0)) {
               deduped.set(dedupKey, { ...row, bookId: bookKey })
@@ -213,10 +219,10 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
             const key = hashToId.get(bareSession) ?? hashToId.get(rawId.toLowerCase()) ?? rawId
             const day = String(incoming.day ?? '')
             if (!key || !day) continue
-            const deviceId = String(incoming.deviceId ?? 'mobile')
+            const deviceId = canonDeviceId(incoming.deviceId)
             const seconds = Number(incoming.seconds ?? 0)
             const index = rows.findIndex(
-              (row) => String(row.bookId) === key && String(row.day) === day && String(row.deviceId ?? 'desktop') === deviceId
+              (row) => String(row.bookId) === key && String(row.day) === day && canonDeviceId(row.deviceId) === deviceId
             )
             if (index >= 0) {
               if (seconds > Number(rows[index].seconds ?? 0)) {

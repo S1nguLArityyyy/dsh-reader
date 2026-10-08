@@ -83,7 +83,22 @@ if (insideProject) {
         rmSync(join(deployDir, entry), { recursive: true, force: true })
       }
     }
-    cpSync(dest, deployDir, { recursive: true })
+    // 部署重试：删完旧文件后复制偶发中断，会留下一个没有 exe 的空壳目录
+    let copied = false
+    let lastErr = null
+    for (let attempt = 1; attempt <= 3 && !copied; attempt += 1) {
+      try {
+        console.log(`[portable] 部署第 ${attempt} 次尝试 → ${deployDir}`)
+        cpSync(dest, deployDir, { recursive: true, force: true })
+        copied = true
+      } catch (err) {
+        lastErr = err
+        console.log(`[portable] 第 ${attempt} 次失败：${String(err)}`)
+        await new Promise((r) => setTimeout(r, 800))
+      }
+    }
+    if (!copied) throw lastErr ?? new Error('部署失败')
+    console.log(`[portable] 部署完成，校验 exe：${existsSync(join(deployDir, 'DshReader.exe'))}`)
     console.log(`[portable] 已部署到：${deployDir}`)
     console.log(`[portable] 双击 ${join(deployDir, 'DshReader.exe')} 即可运行`)
   } catch (err) {
