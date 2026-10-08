@@ -95,6 +95,7 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
             (name) => extname(name).toLowerCase() === '.epub'
           )
           // 手机按 uuid 文件名排不了卷号，所以把原始文件名和书名一起发过去
+          const volumeByName = new Map<string, string>()
           const metaByName = new Map<string, { title: string; originalName: string }>()
           try {
             const libRaw = await readFile(join(options.dataDir ?? '', 'library.json'), 'utf8')
@@ -102,6 +103,7 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
             for (const row of lib) {
               const filePath = String(row.filePath ?? '')
               if (!filePath) continue
+              if (row.volume) volumeByName.set(basename(filePath), String(row.volume))
               metaByName.set(basename(filePath), {
                 title: String(row.title ?? ''),
                 originalName: String(row.fileName ?? '')
@@ -121,7 +123,8 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
               color: options.colorOf?.(name) ?? null,
               hash: options.hashOf?.(name) ?? null,
               title: metaByName.get(name)?.title ?? null,
-              originalName: metaByName.get(name)?.originalName ?? null
+              originalName: metaByName.get(name)?.originalName ?? null,
+              volume: volumeByName.get(name) ?? null
             })
           }
           // 手机端可以带上自己已有的指纹（?have=a,b,c ✓）→ 这里只返回缺的 ✓
