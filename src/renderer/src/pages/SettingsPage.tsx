@@ -467,7 +467,7 @@ export function SettingsPage() {
               <div className="setting-label">版本</div>
             </div>
             <div className="setting-control">
-              <span className="setting-hint">v{info?.version ?? '0.1.0'} · 第一阶段（页面结构与交互）</span>
+              <span className="setting-hint">v{info?.version ?? '0.1.0'} · 正式版</span>
             </div>
           </div>
           <div className="setting-row">
