@@ -241,6 +241,13 @@ export const useApp = create<AppStore>((set, get) => ({
         ready: true
       })
 
+      // 手机通过局域网推来记录后，主进程会重读并发这个事件，界面跟着刷新
+      if (typeof window.api.lan?.onChanged === 'function') {
+        window.api.lan.onChanged(() => {
+          void get().refreshAll()
+        })
+      }
+
       if (modal === 'sync') set({ syncModalOpen: true })
       if (modal === 'conflict') get().previewConflicts()
       if (modal === 'detail' && books.length > 0) set({ detailBookId: books[0].id })

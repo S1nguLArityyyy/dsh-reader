@@ -75,7 +75,15 @@ const api = {
   },
   lan: {
     reloadRecords: () => invoke<boolean>('lan:reloadRecords'),
-    openBooksDir: () => invoke<string>('lan:openBooksDir')
+    openBooksDir: () => invoke<string>('lan:openBooksDir'),
+    /** 主进程收到手机推来的记录后会通知刷新 */
+    onChanged: (callback: () => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on('sync:changed', listener)
+      return () => {
+        ipcRenderer.removeListener('sync:changed', listener)
+      }
+    }
   },
   stats: {
     get: () => invoke<StatsPayload>('stats:get')
