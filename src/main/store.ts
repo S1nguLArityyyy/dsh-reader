@@ -93,6 +93,12 @@ export class Store {
     }
   }
 
+  /** 只重读阅读记录（手机通过局域网推进来之后调用，否则内存里的旧数据会覆盖文件） */
+  async reloadRecords(): Promise<void> {
+    this.progress = await this.readJson<Record<string, Progress>>('progress', {})
+    this.sessions = await this.readJson<SessionRow[]>('sessions', [])
+  }
+
   async init(): Promise<void> {
     await this.setupBooksDir()
     await mkdir(this.coversDir, { recursive: true })

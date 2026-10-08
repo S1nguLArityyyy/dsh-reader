@@ -22,9 +22,19 @@ export function sortBooks(books: Book[], sort: 'recent' | 'added' | 'title'): Bo
 }
 
 /** 组内排序：按卷号升序，没有卷号的排在最后 */
+/** 卷号解析：容忍 "8.5" / "第9卷" / "Vol.7"，解析不出来排到最后（Number() 遇到这些会变 NaN 导致顺序乱） */
+function volumeOf(book: Book): number {
+  const raw = String(book.volume ?? '').trim()
+  if (!raw) return Number.MAX_SAFE_INTEGER
+  const match = raw.match(/\\d+(?:\\.\\d+)?/)
+  if (!match) return Number.MAX_SAFE_INTEGER
+  const value = Number(match[0])
+  return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER
+}
+
 function byVolume(a: Book, b: Book): number {
-  const av = a.volume ? Number(a.volume) : Number.MAX_SAFE_INTEGER
-  const bv = b.volume ? Number(b.volume) : Number.MAX_SAFE_INTEGER
+  const av = volumeOf(a)
+  const bv = volumeOf(b)
   if (av !== bv) return av - bv
   return a.title.localeCompare(b.title, 'zh-Hans-CN')
 }

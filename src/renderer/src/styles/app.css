@@ -810,6 +810,7 @@
 }
 
 .stat-unit {
+  white-space: nowrap;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-2);

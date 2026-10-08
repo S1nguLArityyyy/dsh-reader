@@ -90,12 +90,20 @@ function errorText(err: unknown): string {
  * 没有历史进度时选择起始章节：
  * 跳过封面/制作/版权等前置页，从正文第一项开始。
  */
-const FRONT_MATTER =
   /^(封面|书封|書封|封底|书名|書名|标题|標題|制作|製作|版权|版權|版权页|版權頁|声明|聲明|免责|免責|录入|錄入|下载|下載|简介|簡介|内容简介|作品简介|目录|目次|目錄|信息|資訊|彩插|彩頁|彩页|插图|插圖|扉页|扉頁|奥付|翻译|翻譯|汉化|漢化|制作信息)/
 
+/**
+ * 决定"从哪一章开始读"（仅用于没有阅读记录的新书）。
+ * 旧实现挑"第一个不像前置页的条目"，会猜过头，一本没开过的书直接停在第十章左右。
+ * 现在保守：只有明确是封面/目录/版权这类非正文条目才往后跳，其余一律从第 0 章开始。
+ */
 function pickStartChapter(payload: { toc: { label: string; chapterIndex: number }[] }): number {
-  const firstContent = payload.toc.find((entry) => !FRONT_MATTER.test(entry.label.trim()))
-  return firstContent?.chapterIndex ?? payload.toc[0]?.chapterIndex ?? 0
+  const skip = /^(封面|书名|目录|目次|版权|扉页|插页|广告|contents?|cover|title)/i
+  for (const item of payload.toc ?? []) {
+    const label = String(item.label ?? "").trim()
+    if (label && !skip.test(label)) return item.chapterIndex
+  }
+  return 0
 }
 
 /**

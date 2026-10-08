@@ -195,6 +195,12 @@ async function bootstrap(): Promise<void> {
     const lan = await startLanServer({
       booksDir: localStore.booksDir,
       dataDir,
+      // 手机推来的记录已写入文件 → 重读进内存并通知界面刷新（否则内存里的旧数据会在下次保存时覆盖回去）
+      onRecordsMerged: () => {
+        void localStore.reloadRecords().then(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:changed')
+        })
+      },
       // 手机端据此在下载之前就跳过已有书 ✓ 不必为了比对而下整本 ✓
       hashOf: (fileName: string) => {
         const hit = localStore.books.find((item) => item.fileName === fileName || `${item.id}.epub` === fileName)

@@ -21,6 +21,8 @@ export interface LanServerOptions {
   booksDir: string
   /** 桌面端数据目录（progress.json / sessions.json 在这里 ✓） */
   dataDir?: string
+  /** 收到并合并了手机推来的记录（主进程据此重读记录并刷新界面） */
+  onRecordsMerged?: () => void
   /** 取某本书的内容指纹（手机端据此在下载【之前】就跳过已有书 ✓ 省掉整本下载 ✓） */
   hashOf?: (fileName: string) => string | null
   /** 取某本书的主色（桌面端算好的 ✓ 手机端直接沿用 ✓ 两端一致 ✓） */
@@ -179,6 +181,7 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
           const body = JSON.stringify({ ok: true, progressMerged, sessionsMerged })
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) })
           res.end(body)
+          options.onRecordsMerged?.()
           log(`[lan] 收到手机记录 → 进度 +${progressMerged} · 时长 +${sessionsMerged}（已备份 .bak ✓）`)
           return
         }
