@@ -113,10 +113,30 @@ function createTrayIcon(): Electron.NativeImage {
 }
 
 /** 托盘：左键切换主窗口，右键菜单可显示或退出 */
+/**
+ * 托盘图标：必须用 app.getFileIcon 从 exe 里提取。
+ * nativeImage.createFromPath 只认 PNG/JPEG，传 exe 进去得到的是空图标，所以之前托盘看不见。
+ */
+async function applyTrayIcon(): Promise<void> {
+  const realExe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
+  try {
+    const icon = await app.getFileIcon(realExe, { size: 'small' })
+    if (!icon.isEmpty()) {
+      tray?.setImage(icon)
+      log('[tray] 图标已设置')
+    } else {
+      log('[tray] getFileIcon 返回空图标')
+    }
+  } catch (error) {
+    log('[tray] 提取图标失败', String(error))
+  }
+}
+
 function setupTray(win: BrowserWindow): void {
   if (tray) return
   try {
-    tray = new Tray(createTrayIcon())
+    tray = new Tray(nativeImage.createEmpty())
+    void applyTrayIcon()
     tray.setToolTip('Dsh Reader 正在运行（手机可通过局域网同步）')
     tray.setContextMenu(
       Menu.buildFromTemplate([
