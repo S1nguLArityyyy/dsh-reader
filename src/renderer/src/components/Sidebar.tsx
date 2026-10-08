@@ -144,6 +144,29 @@ export function Sidebar() {
                   </div>
                 </div>
               </div>
+              {lan?.lanTransfer ? (
+                <div className="setting-row">
+                  <div style={{ width: '100%' }}>
+                    <div className="setting-label">正在发送给手机：{lan.lanTransfer.name}</div>
+                    <div style={{ height: 6, background: 'var(--border)', borderRadius: 3, marginTop: 8 }}>
+                      <div
+                        style={{
+                          height: '100%',
+                          width: Math.round((lan.lanTransfer.sent / Math.max(1, lan.lanTransfer.total)) * 100) + '%',
+                          background: 'var(--accent, #3b6fd4)',
+                          borderRadius: 3,
+                          transition: 'width 0.2s linear'
+                        }}
+                      />
+                    </div>
+                    <div className="setting-desc" style={{ marginTop: 6 }}>
+                      {Math.round(lan.lanTransfer.sent / 1024)} KB / {Math.round(lan.lanTransfer.total / 1024)} KB
+                      {' · '}
+                      {Math.round((lan.lanTransfer.sent / Math.max(1, lan.lanTransfer.total)) * 100)}%
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
                 <button
                   className="btn btn-ghost btn-sm"

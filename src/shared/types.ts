@@ -237,4 +237,6 @@ export interface AppInfo {
   lanUrl: string
   /** 最近一次收到手机推来的阅读记录 */
   lastRecordPush: { at: number; progress: number; sessions: number }
+  /** 正在发送给手机的书；没有则为 null */
+  lanTransfer: { name: string; sent: number; total: number } | null
 }

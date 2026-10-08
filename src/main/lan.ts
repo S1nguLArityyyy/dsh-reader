@@ -16,6 +16,21 @@ import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { networkInterfaces } from 'node:os'
 import { basename, extname, join, normalize } from 'node:path'
 
+/** 正在发送给手机的书（用于界面显示进度） */
+export interface LanTransfer {
+  name: string
+  sent: number
+  total: number
+  at: number
+}
+
+let currentTransfer: LanTransfer | null = null
+
+/** 当前是否有正在发送的书；没有则为 null */
+export function lanTransfer(): LanTransfer | null {
+  return currentTransfer
+}
+
 export interface LanServerOptions {
   /** 书籍目录（电脑本地书库） */
   booksDir: string
@@ -277,7 +292,21 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
             'Content-Length': info.size,
             'Cache-Control': 'no-store'
           })
-          createReadStream(full).pipe(res)
+          // 记录发送进度，界面据此画进度条
+          const stream = createReadStream(full)
+          let sent = 0
+          currentTransfer = { name: requested, sent: 0, total: info.size, at: Date.now() }
+          stream.on('data', (chunk) => {
+            sent += chunk.length
+            currentTransfer = { name: requested, sent, total: info.size, at: Date.now() }
+          })
+          const clearTransfer = (): void => {
+            currentTransfer = null
+          }
+          stream.on('close', clearTransfer)
+          stream.on('error', clearTransfer)
+          res.on('close', clearTransfer)
+          stream.pipe(res)
           return
         }
         res.writeHead(404).end('not found')

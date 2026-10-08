@@ -8,7 +8,7 @@ import { enrichBook, importMany } from './library'
 import { isInsideDataDir, setDataRoot } from './media'
 import { seedDemoStats } from './devseed'
 import { Store, resolveDataDir } from './store'
-import { startLanServer } from './lan'
+import { lanTransfer, startLanServer } from './lan'
 
 app.setName('Dsh Reader')
 
@@ -175,7 +175,7 @@ async function bootstrap(): Promise<void> {
     return net.fetch(pathToFileURL(raw).toString())
   })
 
-  registerIpc(localStore, { url: () => lanUrl, lastPush: () => lastRecordPush })
+  registerIpc(localStore, { url: () => lanUrl, lastPush: () => lastRecordPush, transfer: () => lanTransfer() })
 
   // 局域网书籍直传：手机在同一个 WiFi 下可直接高速拉取本机书库（不经网盘、不限速）
   try {

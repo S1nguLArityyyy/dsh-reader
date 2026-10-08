@@ -65,6 +65,7 @@ async function loadBookMeta(store: Store, book: Book): Promise<BookMetaCache> {
 export interface LanBridge {
   url: () => string
   lastPush: () => { at: number; progress: number; sessions: number }
+  transfer: () => { name: string; sent: number; total: number } | null
 }
 
 export function registerIpc(store: Store, lan: LanBridge): void {
@@ -84,6 +85,7 @@ export function registerIpc(store: Store, lan: LanBridge): void {
     dataDir: store.dataDir,
     lanUrl: lan.url(),
     lastRecordPush: lan.lastPush(),
+    lanTransfer: lan.transfer(),
     booksDir: store.booksDir,
     coversDir: store.coversDir,
     cacheDir: store.cacheDir,

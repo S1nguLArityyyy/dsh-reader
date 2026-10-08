@@ -255,6 +255,9 @@ export function LibraryPage() {
           {query ? '搜索结果' : activeGroup ? activeGroup.title : '本地书库'}
         </h1>
         <div className="head-actions">
+          <button className="icon-btn" title="刷新（重新读取书库与记录）" onClick={() => void refreshAll()}>
+            <RefreshCw size={19} />
+          </button>
           {seriesFilter && !query ? (
             <button className="btn btn-ghost btn-sm" onClick={() => setSeriesFilter(null)}>
               显示全部
