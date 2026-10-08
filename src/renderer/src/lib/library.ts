@@ -78,6 +78,12 @@ export function groupBooks(books: Book[]): BookGroup[] {
   }
   for (const [key, list] of bySeries) {
     if (list.length >= 2) {
+      // 同名的手动合集优先：并进去，避免同一个名字出现两个分组
+      // （手动合集是 manual: 前缀，自动系列是 series: 前缀，键不同但显示名相同）
+      const manualKey = `${MANUAL_PREFIX}${key}`
+      if (groups.has(manualKey)) {
+        for (const book of list) push(manualKey, key, book, { manual: true })
+      } else
       for (const book of list) push(`series:${key}`, key, book)
     } else {
       noSeries.push(...list)
