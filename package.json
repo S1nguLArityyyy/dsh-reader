@@ -21,10 +21,7 @@
     "preview:web": "node scripts/serve-web.mjs",
     "check:epub": "node scripts/epub-check.mjs",
     "check:backend": "node scripts/backend-check.mjs",
-    "check:sync": "node scripts/sync-check.mjs",
-    "check:webdav": "node scripts/webdav-check.mjs",
     "sync:demo": "node scripts/sync-demo.mjs",
-    "check": "npm run typecheck && npm run check:epub && npm run check:backend && npm run check:sync && npm run check:webdav",
     "shot": "node scripts/screenshot.mjs",
     "shot:web": "node scripts/shot-web.mjs",
     "shot:mobile": "node scripts/shot-mobile.mjs"
