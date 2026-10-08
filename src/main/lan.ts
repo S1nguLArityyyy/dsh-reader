@@ -119,7 +119,9 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
               size: info?.size ?? 0,
               modifiedAt: info?.mtimeMs ?? 0,
               color: options.colorOf?.(name) ?? null,
-              hash: options.hashOf?.(name) ?? null
+              hash: options.hashOf?.(name) ?? null,
+              title: metaByName.get(name)?.title ?? null,
+              originalName: metaByName.get(name)?.originalName ?? null
             })
           }
           // 手机端可以带上自己已有的指纹（?have=a,b,c ✓）→ 这里只返回缺的 ✓
