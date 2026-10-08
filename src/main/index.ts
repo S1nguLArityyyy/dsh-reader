@@ -139,7 +139,10 @@ function setupTray(win: BrowserWindow): void {
   ipcMain.handle('app:getAutoLaunch', () => {
     const path = loginItemPath()
     try {
-      const fromExe = app.getLoginItemSettings({ path }).openAtLogin
+      // Windows 上必须把 args 一起比对：我们的记录带 --hidden，不传 args 就永远匹配不上
+      const withHidden = app.getLoginItemSettings({ path, args: ['--hidden'] }).openAtLogin
+      const plain = app.getLoginItemSettings({ path, args: [] }).openAtLogin
+      const fromExe = withHidden || plain
       // 早期版本可能把临时路径写进去了，这里一并检查默认查询结果
       return fromExe || app.getLoginItemSettings().openAtLogin
     } catch (error) {
@@ -156,7 +159,7 @@ function setupTray(win: BrowserWindow): void {
         path,
         args: hideOnStart === true ? ['--hidden'] : []
       })
-      const now = app.getLoginItemSettings({ path }).openAtLogin
+      const now = app.getLoginItemSettings({ path, args: hideOnStart === true ? ['--hidden'] : [] }).openAtLogin
       log(`[autolaunch] 设置后系统回报 openAtLogin=${now}`)
       return now
     } catch (error) {
@@ -363,7 +366,10 @@ async function bootstrap(): Promise<void> {
   ipcMain.handle('app:getAutoLaunch', () => {
     const path = loginItemPath()
     try {
-      const fromExe = app.getLoginItemSettings({ path }).openAtLogin
+      // Windows 上必须把 args 一起比对：我们的记录带 --hidden，不传 args 就永远匹配不上
+      const withHidden = app.getLoginItemSettings({ path, args: ['--hidden'] }).openAtLogin
+      const plain = app.getLoginItemSettings({ path, args: [] }).openAtLogin
+      const fromExe = withHidden || plain
       // 早期版本可能把临时路径写进去了，这里一并检查默认查询结果
       return fromExe || app.getLoginItemSettings().openAtLogin
     } catch (error) {
@@ -380,7 +386,7 @@ async function bootstrap(): Promise<void> {
         path,
         args: hideOnStart === true ? ['--hidden'] : []
       })
-      const now = app.getLoginItemSettings({ path }).openAtLogin
+      const now = app.getLoginItemSettings({ path, args: hideOnStart === true ? ['--hidden'] : [] }).openAtLogin
       log(`[autolaunch] 设置后系统回报 openAtLogin=${now}`)
       return now
     } catch (error) {
@@ -452,7 +458,10 @@ app.whenReady().then(() => {
   ipcMain.handle('app:getAutoLaunch', () => {
     const path = loginItemPath()
     try {
-      const fromExe = app.getLoginItemSettings({ path }).openAtLogin
+      // Windows 上必须把 args 一起比对：我们的记录带 --hidden，不传 args 就永远匹配不上
+      const withHidden = app.getLoginItemSettings({ path, args: ['--hidden'] }).openAtLogin
+      const plain = app.getLoginItemSettings({ path, args: [] }).openAtLogin
+      const fromExe = withHidden || plain
       // 早期版本可能把临时路径写进去了，这里一并检查默认查询结果
       return fromExe || app.getLoginItemSettings().openAtLogin
     } catch (error) {
@@ -469,7 +478,7 @@ app.whenReady().then(() => {
         path,
         args: hideOnStart === true ? ['--hidden'] : []
       })
-      const now = app.getLoginItemSettings({ path }).openAtLogin
+      const now = app.getLoginItemSettings({ path, args: hideOnStart === true ? ['--hidden'] : [] }).openAtLogin
       log(`[autolaunch] 设置后系统回报 openAtLogin=${now}`)
       return now
     } catch (error) {
