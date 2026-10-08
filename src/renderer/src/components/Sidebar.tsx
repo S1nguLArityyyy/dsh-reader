@@ -1,5 +1,5 @@
 import appIcon from '../assets/app-icon.png'
-import { useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import {
   BarChart3,
   BookMarked,
@@ -15,6 +15,10 @@ import { groupBooks, SINGLES_KEY } from '../lib/library'
 export function Sidebar() {
   const route = useApp((s) => s.route)
   const go = useApp((s) => s.go)
+  const info = useApp((s) => s.info)
+  const refreshAll = useApp((s) => s.refreshAll)
+  const [lanOpen, setLanOpen] = useState(false)
+  const [lanBusy, setLanBusy] = useState(false)
   const books = useApp((s) => s.books)
   const seriesFilter = useApp((s) => s.seriesFilter)
   const setSeriesFilter = useApp((s) => s.setSeriesFilter)
@@ -90,6 +94,60 @@ export function Sidebar() {
       </div>
 
       <div className="sidebar-foot">
+        <button className="sync-pill" onClick={() => setLanOpen(true)} title="局域网服务状态">
+          <span className={`sync-dot${info?.lanUrl ? ' on' : ''}`} />
+          <span className="sync-label">{info?.lanUrl ? `局域网 ${info.lanUrl.replace(/^https?:\/\//, '')}` : '局域网未启动'}</span>
+        </button>
+        {lanOpen ? (
+          <div
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 900 }}
+            onClick={() => setLanOpen(false)}
+          >
+            <div
+              style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: 440, background: 'var(--panel)', borderRadius: 14, padding: 20 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: '0 0 14px' }}>局域网服务</h3>
+              <div className="setting-row">
+                <div>
+                  <div className="setting-label">服务地址</div>
+                  <div className="setting-desc">{info?.lanUrl || '未启动'}</div>
+                </div>
+              </div>
+              <div className="setting-row">
+                <div>
+                  <div className="setting-label">最近收到手机记录</div>
+                  <div className="setting-desc">
+                    {info?.lastRecordPush?.at
+                      ? new Date(info.lastRecordPush.at).toLocaleString() + ` · 进度 +${info.lastRecordPush.progress} · 时长 +${info.lastRecordPush.sessions}`
+                      : '还没有'}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={lanBusy}
+                  onClick={() => {
+                    setLanBusy(true)
+                    void window.api.lan
+                      .reloadRecords()
+                      .then(() => refreshAll())
+                      .finally(() => setLanBusy(false))
+                  }}
+                >
+                  重新读取记录
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => void window.api.lan.openBooksDir()}>
+                  打开书籍目录
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={() => setLanOpen(false)}>
+                  关闭
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <button className={`nav-item${route === 'settings' ? ' active' : ''}`} onClick={() => go('settings')}>
           <SettingsIcon size={18} />
           <span>设置</span>

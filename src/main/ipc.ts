@@ -62,14 +62,28 @@ async function loadBookMeta(store: Store, book: Book): Promise<BookMetaCache> {
   return value
 }
 
-export function registerIpc(store: Store): void {
+export interface LanBridge {
+  url: () => string
+  lastPush: () => { at: number; progress: number; sessions: number }
+}
+
+export function registerIpc(store: Store, lan: LanBridge): void {
   const handle = (channel: string, fn: (...args: any[]) => unknown): void => {
     ipcMain.handle(channel, async (_event, ...args: any[]) => fn(...args))
   }
 
+  handle('lan:reloadRecords', async () => {
+    await store.reloadRecords()
+    return true
+  })
+
+  handle('lan:openBooksDir', () => shell.openPath(store.booksDir))
+
   handle('app:info', (): AppInfo => ({
     version: app.getVersion(),
     dataDir: store.dataDir,
+    lanUrl: lan.url(),
+    lastRecordPush: lan.lastPush(),
     booksDir: store.booksDir,
     coversDir: store.coversDir,
     cacheDir: store.cacheDir,

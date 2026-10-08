@@ -73,6 +73,10 @@ const api = {
     setProgress: (bookId: string, patch: Partial<Progress>) => invoke<Progress>('reader:progress', bookId, patch),
     tick: (bookId: string, seconds: number) => invoke<boolean>('reader:tick', bookId, seconds)
   },
+  lan: {
+    reloadRecords: () => invoke<boolean>('lan:reloadRecords'),
+    openBooksDir: () => invoke<string>('lan:openBooksDir')
+  },
   stats: {
     get: () => invoke<StatsPayload>('stats:get')
   },

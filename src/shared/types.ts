@@ -233,4 +233,8 @@ export interface AppInfo {
   coversDir: string
   cacheDir: string
   platform: string
+  /** 局域网服务地址（形如 http://192.168.0.102:8787），未启动为空串 */
+  lanUrl: string
+  /** 最近一次收到手机推来的阅读记录 */
+  lastRecordPush: { at: number; progress: number; sessions: number }
 }

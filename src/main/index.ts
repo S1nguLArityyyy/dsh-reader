@@ -1,6 +1,6 @@
 import { app, BrowserWindow, net, protocol, shell } from 'electron'
 import { appendFileSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { registerIpc } from './ipc'
@@ -15,6 +15,9 @@ app.setName('Dsh Reader')
 // 显式指定数据目录时（开发 / 截图 / 多设备演示），把 Electron 自己的 profile 也一起隔离。
 // 否则同一台机器上跑多个实例会共用 %APPDATA% 下的同一份 profile（缓存 / Local Storage /
 // GPUCache），互相加锁打架；隔离后每个实例的数据与缓存都各自独立。
+let lastRecordPush = { at: 0, progress: 0, sessions: 0 }
+let lanUrl = ''
+
 const dataDirOverride = process.env.DSH_DATA_DIR
 if (dataDirOverride && dataDirOverride.trim()) {
   app.setPath('userData', resolve(dataDirOverride.trim()))
@@ -172,7 +175,7 @@ async function bootstrap(): Promise<void> {
     return net.fetch(pathToFileURL(raw).toString())
   })
 
-  registerIpc(localStore)
+  registerIpc(localStore, { url: () => lanUrl, lastPush: () => lastRecordPush })
 
   // 局域网书籍直传：手机在同一个 WiFi 下可直接高速拉取本机书库（不经网盘、不限速）
   try {
@@ -180,10 +183,21 @@ async function bootstrap(): Promise<void> {
       booksDir: localStore.booksDir,
       dataDir,
       // 手机推来的记录已写入文件 → 重读进内存并通知界面刷新（否则内存里的旧数据会在下次保存时覆盖回去）
-      onRecordsMerged: () => {
+      onRecordsMerged: (info: { progress: number; sessions: number }) => {
+        lastRecordPush = { at: Date.now(), progress: info.progress, sessions: info.sessions }
         void localStore.reloadRecords().then(() => {
           if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:changed')
         })
+    // 服务地址写进了 lan.txt，读出来给界面显示
+    void readFile(join(app.getPath('userData'), 'lan.txt'), 'utf8')
+      .then((text) => {
+        const line = String(text)
+          .split('\n')
+          .map((s) => s.trim())
+          .find((s) => s.startsWith('http'))
+        if (line) lanUrl = line
+      })
+      .catch(() => undefined)
       },
       // 手机端据此在下载之前就跳过已有书 ✓ 不必为了比对而下整本 ✓
       hashOf: (fileName: string) => {
