@@ -94,6 +94,23 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
           const names = (await readdir(booksDir).catch(() => [] as string[])).filter(
             (name) => extname(name).toLowerCase() === '.epub'
           )
+          // 手机按 uuid 文件名排不了卷号，所以把原始文件名和书名一起发过去
+          const metaByName = new Map<string, { title: string; originalName: string }>()
+          try {
+            const libRaw = await readFile(join(options.dataDir ?? '', 'library.json'), 'utf8')
+            const lib = JSON.parse(libRaw) as Array<Record<string, unknown>>
+            for (const row of lib) {
+              const filePath = String(row.filePath ?? '')
+              if (!filePath) continue
+              metaByName.set(basename(filePath), {
+                title: String(row.title ?? ''),
+                originalName: String(row.fileName ?? '')
+              })
+            }
+          } catch {
+            // 读不到书目就不带这两项，手机端会退回原来的行为
+          }
+
           const items = []
           for (const name of names) {
             const info = await stat(join(booksDir, name)).catch(() => null)
