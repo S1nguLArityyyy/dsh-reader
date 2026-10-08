@@ -250,6 +250,7 @@ export function LibraryPage() {
 
   return (
     <div className="page">
+      <div className="page-top">
       <div className="page-head">
         <h1 className="page-title">
           {query ? '搜索结果' : activeGroup ? activeGroup.title : '本地书库'}
@@ -375,6 +376,7 @@ export function LibraryPage() {
             <X size={15} />
           </button>
         ) : null}
+      </div>
       </div>
 
       {books.length === 0 ? (

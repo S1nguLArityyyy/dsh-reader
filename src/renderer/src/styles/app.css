@@ -2753,9 +2753,14 @@
  * 滚动书格时，标题行与右侧操作按钮固定在顶部，不再被卷走
  */
 .page-head {
+  padding-bottom: 10px;
+}
+
+/* 标题行 + 搜索框整体常驻：滚动书格时都留在顶部 */
+.page-top {
   position: sticky;
   top: 0;
   z-index: 30;
   background: var(--bg, #f4f5f7);
-  padding-bottom: 10px;
+  padding-bottom: 12px;
 }
