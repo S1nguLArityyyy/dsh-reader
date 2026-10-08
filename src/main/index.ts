@@ -74,10 +74,40 @@ function wait(ms: number): Promise<void> {
 
 let tray: Tray | null = null
 let quitFromTray = false
+/** 开机自启的首次启动不显示窗口，之后托盘重建的窗口照常显示 */
+let startupHidden = process.argv.includes('--hidden')
+
+let hiddenTimer: NodeJS.Timeout | null = null
+
+/** 隐藏几分钟后释放窗口：后台只保留局域网服务，降低内存占用 */
+function scheduleIdleRelease(): void {
+  if (hiddenTimer) clearTimeout(hiddenTimer)
+  hiddenTimer = setTimeout(() => {
+    if (!mainWindow || mainWindow.isVisible()) return
+    log('[tray] 后台闲置，释放窗口（局域网服务继续运行）')
+    mainWindow.destroy()
+    mainWindow = null
+  }, 3 * 60 * 1000)
+}
+
+/** 托盘点击时确保有窗口可用 */
+function showMainWindow(): void {
+  if (hiddenTimer) {
+    clearTimeout(hiddenTimer)
+    hiddenTimer = null
+  }
+  if (!mainWindow) {
+    mainWindow = createWindow()
+    return
+  }
+  mainWindow.show()
+  mainWindow.focus()
+}
 
 /** 托盘图标：打包后用 exe 自带的图标，开发时退回 Electron 的图标 */
 function createTrayIcon(): Electron.NativeImage {
-  const exeIcon = nativeImage.createFromPath(process.execPath)
+  const realExe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
+  const exeIcon = nativeImage.createFromPath(realExe)
   if (!exeIcon.isEmpty()) return exeIcon
   return nativeImage.createEmpty()
 }
@@ -184,11 +214,20 @@ function createWindow(): BrowserWindow {
 
   win.on('ready-to-show', () => {
     // 开机自启带 --hidden 时静默进托盘
-    if (process.argv.includes('--hidden')) {
+    if (startupHidden) {
       log('[startup] --hidden：只驻留托盘')
+      startupHidden = false
     } else {
       win.show()
     }
+  })
+  // 关闭按钮不退出：桌面端是局域网服务端，退出会让手机立刻断连
+  win.on('close', (event) => {
+    if (quitFromTray) return
+    event.preventDefault()
+    win.hide()
+    log('[tray] 已隐藏到托盘，局域网服务继续运行')
+    scheduleIdleRelease()
   })
   win.on('closed', () => {
     mainWindow = null
