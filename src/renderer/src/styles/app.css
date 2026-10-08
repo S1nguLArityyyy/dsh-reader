@@ -2748,3 +2748,14 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* ================= 书库顶部常驻 =================
+ * 滚动书格时，标题行与右侧操作按钮固定在顶部，不再被卷走
+ */
+.page-head {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg, #f4f5f7);
+  padding-bottom: 10px;
+}
