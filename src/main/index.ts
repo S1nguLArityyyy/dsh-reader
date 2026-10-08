@@ -120,6 +120,14 @@ function createTrayIcon(): Electron.NativeImage {
 async function applyTrayIcon(): Promise<void> {
   const realExe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
   try {
+    // 优先用打进包里的 PNG：exe 自身没有嵌入应用图标，getFileIcon 只能拿到通用占位图
+    const fromPng = nativeImage.createFromPath(join(process.resourcesPath, 'icon.png'))
+    if (!fromPng.isEmpty()) {
+      tray?.setImage(fromPng.resize({ width: 16, height: 16 }))
+      log('[tray] 图标已设置（包内 PNG）')
+      return
+    }
+    log('[tray] 包内 PNG 不可用，退回 exe 图标')
     const icon = await app.getFileIcon(realExe, { size: 'small' })
     if (!icon.isEmpty()) {
       tray?.setImage(icon)

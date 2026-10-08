@@ -40,3 +40,8 @@ nsis:
 
 # 关闭自动更新相关的发布配置（当前阶段不需要）
 publish: null
+
+# 托盘图标用这张 PNG（exe 自身没有嵌入应用图标）
+extraResources:
+  - from: build/icon.png
+    to: icon.png
