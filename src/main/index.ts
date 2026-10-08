@@ -13,6 +13,24 @@ import { lanTransfer, startLanServer } from './lan'
 
 app.setName('Dsh Reader')
 
+// 单实例：程序已经开着时再点一次 exe，只把已有窗口显示出来，不再开第二个实例
+// （之前会出现两个实例、8 个进程，内存翻倍）
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    log('[startup] 检测到第二次启动，显示已有窗口')
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    } else {
+      showMainWindow()
+    }
+  })
+}
+
 // 显式指定数据目录时（开发 / 截图 / 多设备演示），把 Electron 自己的 profile 也一起隔离。
 // 否则同一台机器上跑多个实例会共用 %APPDATA% 下的同一份 profile（缓存 / Local Storage /
 // GPUCache），互相加锁打架；隔离后每个实例的数据与缓存都各自独立。
