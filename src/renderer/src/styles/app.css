@@ -2762,5 +2762,8 @@
   top: 0;
   z-index: 30;
   background: var(--bg, #f4f5f7);
+  /* 往上多盖一段：滚动时内容不会从顶部缝隙里露出来 */
+  padding-top: 14px;
+  margin-top: -14px;
   padding-bottom: 12px;
 }

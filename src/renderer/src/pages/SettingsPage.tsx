@@ -23,6 +23,25 @@ const ACCENT_PRESETS = ['#3b6fd4', '#2fa36b', '#d97757', '#8b5cf6', '#e0a028', '
 
 export function SettingsPage() {
   const settings = useApp((s) => s.settings)
+  // 局域网地址由主进程启动后写入 lan.txt，渲染层的启动快照可能还是空的，所以自己轮询
+  const [lanUrl, setLanUrl] = useState('')
+  useEffect(() => {
+    let alive = true
+    const tick = (): void => {
+      void window.api.app
+        .info()
+        .then((next) => {
+          if (alive && next.lanUrl) setLanUrl(next.lanUrl)
+        })
+        .catch(() => undefined)
+    }
+    tick()
+    const timer = window.setInterval(tick, 2000)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+    }
+  }, [])
   const [autoLaunch, setAutoLaunch] = useState(false)
   // 自启时是否静默进托盘：这是本机的界面偏好，存在 localStorage 就够
   const [hideOnStart, setHideOnStart] = useState(
@@ -454,7 +473,7 @@ export function SettingsPage() {
               <div className="setting-desc">把上面这个地址填进手机端的「局域网同步」，端口固定 8787。手机与电脑必须在同一个 WiFi 下；重启电脑或路由器后地址可能变化，以这里显示的为准。看不到地址时也可在命令行执行 ipconfig，取当前网卡的 IPv4 地址加 :8787</div>
             </div>
             <div className="setting-control">
-              <span className="setting-hint">启动时写入 lan.txt</span>
+              <span className="setting-hint">{lanUrl || '正在获取…'}</span>
             </div>
           </div>
 
