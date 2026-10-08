@@ -102,14 +102,37 @@ function setupTray(win: BrowserWindow): void {
     mainWindow?.hide()
     return true
   })
-  ipcMain.handle('app:getAutoLaunch', () => app.getLoginItemSettings().openAtLogin)
+  // 便携版运行时程序被解压到临时目录，process.execPath 是那个临时路径，
+  // 拿它写登录项会立刻失效 —— 真实路径在 PORTABLE_EXECUTABLE_FILE 里
+  const loginItemPath = (): string => process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
+
+  ipcMain.handle('app:getAutoLaunch', () => {
+    const path = loginItemPath()
+    try {
+      const fromExe = app.getLoginItemSettings({ path }).openAtLogin
+      // 早期版本可能把临时路径写进去了，这里一并检查默认查询结果
+      return fromExe || app.getLoginItemSettings().openAtLogin
+    } catch (error) {
+      log('[autolaunch] 读取失败', String(error))
+      return false
+    }
+  })
   ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean, hideOnStart: boolean) => {
-    // hideOnStart 为真时带 --hidden：开机静默进托盘，不弹窗
-    app.setLoginItemSettings({
-      openAtLogin: enabled === true,
-      args: hideOnStart === true ? ['--hidden'] : []
-    })
-    return app.getLoginItemSettings().openAtLogin
+    const path = loginItemPath()
+    log(`[autolaunch] 设置 openAtLogin=${enabled === true} hideOnStart=${hideOnStart === true} path=${path}`)
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: enabled === true,
+        path,
+        args: hideOnStart === true ? ['--hidden'] : []
+      })
+      const now = app.getLoginItemSettings({ path }).openAtLogin
+      log(`[autolaunch] 设置后系统回报 openAtLogin=${now}`)
+      return now
+    } catch (error) {
+      log('[autolaunch] 设置失败', String(error))
+      return false
+    }
   })
   mainWindow = createWindow()
             }
@@ -294,14 +317,37 @@ async function bootstrap(): Promise<void> {
     mainWindow?.hide()
     return true
   })
-  ipcMain.handle('app:getAutoLaunch', () => app.getLoginItemSettings().openAtLogin)
+  // 便携版运行时程序被解压到临时目录，process.execPath 是那个临时路径，
+  // 拿它写登录项会立刻失效 —— 真实路径在 PORTABLE_EXECUTABLE_FILE 里
+  const loginItemPath = (): string => process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
+
+  ipcMain.handle('app:getAutoLaunch', () => {
+    const path = loginItemPath()
+    try {
+      const fromExe = app.getLoginItemSettings({ path }).openAtLogin
+      // 早期版本可能把临时路径写进去了，这里一并检查默认查询结果
+      return fromExe || app.getLoginItemSettings().openAtLogin
+    } catch (error) {
+      log('[autolaunch] 读取失败', String(error))
+      return false
+    }
+  })
   ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean, hideOnStart: boolean) => {
-    // hideOnStart 为真时带 --hidden：开机静默进托盘，不弹窗
-    app.setLoginItemSettings({
-      openAtLogin: enabled === true,
-      args: hideOnStart === true ? ['--hidden'] : []
-    })
-    return app.getLoginItemSettings().openAtLogin
+    const path = loginItemPath()
+    log(`[autolaunch] 设置 openAtLogin=${enabled === true} hideOnStart=${hideOnStart === true} path=${path}`)
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: enabled === true,
+        path,
+        args: hideOnStart === true ? ['--hidden'] : []
+      })
+      const now = app.getLoginItemSettings({ path }).openAtLogin
+      log(`[autolaunch] 设置后系统回报 openAtLogin=${now}`)
+      return now
+    } catch (error) {
+      log('[autolaunch] 设置失败', String(error))
+      return false
+    }
   })
   mainWindow = createWindow()
   const win = mainWindow
@@ -360,14 +406,37 @@ app.whenReady().then(() => {
     mainWindow?.hide()
     return true
   })
-  ipcMain.handle('app:getAutoLaunch', () => app.getLoginItemSettings().openAtLogin)
+  // 便携版运行时程序被解压到临时目录，process.execPath 是那个临时路径，
+  // 拿它写登录项会立刻失效 —— 真实路径在 PORTABLE_EXECUTABLE_FILE 里
+  const loginItemPath = (): string => process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
+
+  ipcMain.handle('app:getAutoLaunch', () => {
+    const path = loginItemPath()
+    try {
+      const fromExe = app.getLoginItemSettings({ path }).openAtLogin
+      // 早期版本可能把临时路径写进去了，这里一并检查默认查询结果
+      return fromExe || app.getLoginItemSettings().openAtLogin
+    } catch (error) {
+      log('[autolaunch] 读取失败', String(error))
+      return false
+    }
+  })
   ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean, hideOnStart: boolean) => {
-    // hideOnStart 为真时带 --hidden：开机静默进托盘，不弹窗
-    app.setLoginItemSettings({
-      openAtLogin: enabled === true,
-      args: hideOnStart === true ? ['--hidden'] : []
-    })
-    return app.getLoginItemSettings().openAtLogin
+    const path = loginItemPath()
+    log(`[autolaunch] 设置 openAtLogin=${enabled === true} hideOnStart=${hideOnStart === true} path=${path}`)
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: enabled === true,
+        path,
+        args: hideOnStart === true ? ['--hidden'] : []
+      })
+      const now = app.getLoginItemSettings({ path }).openAtLogin
+      log(`[autolaunch] 设置后系统回报 openAtLogin=${now}`)
+      return now
+    } catch (error) {
+      log('[autolaunch] 设置失败', String(error))
+      return false
+    }
   })
   mainWindow = createWindow()
       void loadRoute(mainWindow, 'library', '')
