@@ -2765,5 +2765,4 @@
   /* 往上多盖一段：滚动时内容不会从顶部缝隙里露出来（页面顶部内边距比这更大就继续加） */
   padding-top: 48px;
   margin-top: -48px;
-  padding-bottom: 12px;
 }
