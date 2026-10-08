@@ -22,7 +22,7 @@ export function Sidebar() {
   // 面板打开时重新取一次并轮询：启动时缓存的 info 里还没有局域网地址，服务是随后才起来的
   const [lan, setLan] = useState<Awaited<ReturnType<typeof window.api.app.info>> | null>(null)
   useEffect(() => {
-    if (!lanOpen) return
+    // 面板关闭时也持续轮询（慢一些），这样左下角的小绿点与地址始终是最新的
     let alive = true
     const tick = (): void => {
       void window.api.app
@@ -33,7 +33,7 @@ export function Sidebar() {
         .catch(() => undefined)
     }
     tick()
-    const timer = setInterval(tick, 500)
+    const timer = setInterval(tick, lanOpen ? 500 : 2500)
     return () => {
       alive = false
       clearInterval(timer)
