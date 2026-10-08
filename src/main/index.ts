@@ -103,8 +103,12 @@ function setupTray(win: BrowserWindow): void {
     return true
   })
   ipcMain.handle('app:getAutoLaunch', () => app.getLoginItemSettings().openAtLogin)
-  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean) => {
-    app.setLoginItemSettings({ openAtLogin: enabled === true, args: ['--hidden'] })
+  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean, hideOnStart: boolean) => {
+    // hideOnStart 为真时带 --hidden：开机静默进托盘，不弹窗
+    app.setLoginItemSettings({
+      openAtLogin: enabled === true,
+      args: hideOnStart === true ? ['--hidden'] : []
+    })
     return app.getLoginItemSettings().openAtLogin
   })
   mainWindow = createWindow()
@@ -291,8 +295,12 @@ async function bootstrap(): Promise<void> {
     return true
   })
   ipcMain.handle('app:getAutoLaunch', () => app.getLoginItemSettings().openAtLogin)
-  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean) => {
-    app.setLoginItemSettings({ openAtLogin: enabled === true, args: ['--hidden'] })
+  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean, hideOnStart: boolean) => {
+    // hideOnStart 为真时带 --hidden：开机静默进托盘，不弹窗
+    app.setLoginItemSettings({
+      openAtLogin: enabled === true,
+      args: hideOnStart === true ? ['--hidden'] : []
+    })
     return app.getLoginItemSettings().openAtLogin
   })
   mainWindow = createWindow()
@@ -353,8 +361,12 @@ app.whenReady().then(() => {
     return true
   })
   ipcMain.handle('app:getAutoLaunch', () => app.getLoginItemSettings().openAtLogin)
-  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean) => {
-    app.setLoginItemSettings({ openAtLogin: enabled === true, args: ['--hidden'] })
+  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean, hideOnStart: boolean) => {
+    // hideOnStart 为真时带 --hidden：开机静默进托盘，不弹窗
+    app.setLoginItemSettings({
+      openAtLogin: enabled === true,
+      args: hideOnStart === true ? ['--hidden'] : []
+    })
     return app.getLoginItemSettings().openAtLogin
   })
   mainWindow = createWindow()

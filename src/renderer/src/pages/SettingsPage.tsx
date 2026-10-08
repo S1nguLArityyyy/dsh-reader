@@ -24,8 +24,12 @@ const ACCENT_PRESETS = ['#3b6fd4', '#2fa36b', '#d97757', '#8b5cf6', '#e0a028', '
 export function SettingsPage() {
   const settings = useApp((s) => s.settings)
   const [autoLaunch, setAutoLaunch] = useState(false)
+  // 自启时是否静默进托盘：这是本机的界面偏好，存在 localStorage 就够
+  const [hideOnStart, setHideOnStart] = useState(
+    () => window.localStorage.getItem('hideOnAutoStart') !== '0'
+  )
 
-  // 开机自启的状态读自系统，不在我们自己的配置里存一份
+  // 开机自启的状态读自系统（任务管理器里改过也能反映出来）
   useEffect(() => {
     void window.api.app
       .getAutoLaunch()
@@ -33,9 +37,21 @@ export function SettingsPage() {
       .catch(() => undefined)
   }, [])
 
-  const toggleAutoLaunch = async (): Promise<void> => {
-    const next = await window.api.app.setAutoLaunch(!autoLaunch)
+  const applyAutoLaunch = async (enabled: boolean, hide: boolean): Promise<void> => {
+    const next = await window.api.app.setAutoLaunch(enabled, hide)
     setAutoLaunch(next)
+  }
+
+  const toggleAutoLaunch = async (): Promise<void> => {
+    await applyAutoLaunch(!autoLaunch, hideOnStart)
+  }
+
+  const toggleHideOnStart = async (): Promise<void> => {
+    const next = !hideOnStart
+    setHideOnStart(next)
+    window.localStorage.setItem('hideOnAutoStart', next ? '1' : '0')
+    // 已开启自启时立刻按新偏好重设一次
+    if (autoLaunch) await applyAutoLaunch(true, next)
   }
   const [logOpen, setLogOpen] = useState(false)
   const info = useApp((s) => s.info)
@@ -334,26 +350,34 @@ export function SettingsPage() {
           <div className="setting-row">
             <div>
               <div className="setting-label">开机自启</div>
-              <div className="setting-desc">登录 Windows 后自动在后台启动并驻留托盘，不弹窗</div>
+              <div className="setting-desc">登录 Windows 后自动在后台启动，保持局域网服务可用</div>
             </div>
             <div className="setting-control">
-              <button className="btn btn-ghost btn-sm" onClick={() => void toggleAutoLaunch()}>
-                {autoLaunch ? '已开启 · 点击关闭' : '已关闭 · 点击开启'}
-              </button>
+              <button
+                className={autoLaunch ? 'switch-pill on' : 'switch-pill'}
+                aria-label="开机自启"
+                onClick={() => void toggleAutoLaunch()}
+              />
             </div>
           </div>
           <div className="setting-row">
             <div>
-              <div className="setting-label">隐藏到托盘</div>
+              <div className="setting-label">自启时隐藏到托盘</div>
               <div className="setting-desc">
-                隐藏窗口但保持局域网服务，手机仍可同步；要退出请用托盘图标右键菜单
+                开机自启时静默进托盘、不弹窗；关闭则照常显示主窗口
               </div>
             </div>
             <div className="setting-control">
-              <button className="btn btn-ghost btn-sm" onClick={() => void window.api.app.hideToTray()}>
-                隐藏
-              </button>
+              <button
+                className={hideOnStart ? 'switch-pill on' : 'switch-pill'}
+                aria-label="自启时隐藏到托盘"
+                disabled={!autoLaunch}
+                onClick={() => void toggleHideOnStart()}
+              />
             </div>
+          </div>
+          <div className="setting-hint">
+            点窗口右上角的关闭按钮不会退出，而是隐藏到托盘；要退出请用托盘图标右键菜单
           </div>
         </section>
 

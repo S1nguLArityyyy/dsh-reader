@@ -27,7 +27,7 @@ const api = {
     /** 是否已设置开机自启（状态读自系统） */
     getAutoLaunch: () => invoke<boolean>('app:getAutoLaunch'),
     /** 设置开机自启，返回设置后的真实状态 */
-    setAutoLaunch: (enabled: boolean) => invoke<boolean>('app:setAutoLaunch', enabled),
+    setAutoLaunch: (enabled: boolean, hideOnStart: boolean) => invoke<boolean>('app:setAutoLaunch', enabled, hideOnStart),
     openPath: (target: string) => invoke<string>('shell:openPath', target),
     /** 拖拽导入时把浏览器 File 还原成本地绝对路径 */
     pathForFile: (file: File) => webUtils.getPathForFile(file)
