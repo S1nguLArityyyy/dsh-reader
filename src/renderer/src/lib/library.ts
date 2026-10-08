@@ -26,7 +26,7 @@ export function sortBooks(books: Book[], sort: 'recent' | 'added' | 'title'): Bo
 function volumeOf(book: Book): number {
   const raw = String(book.volume ?? '').trim()
   if (!raw) return Number.MAX_SAFE_INTEGER
-  const match = raw.match(/\\d+(?:\\.\\d+)?/)
+  const match = raw.match(/\d+(?:\.\d+)?/)
   if (!match) return Number.MAX_SAFE_INTEGER
   const value = Number(match[0])
   return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER
