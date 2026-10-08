@@ -2693,3 +2693,18 @@
     padding: 18px var(--reader-padding) 18px;
   }
 }
+
+/* ================= 日历格子里的书名截断 =================
+ * 原来直接渲染完整书名，长标题会把格子撑高、把整周的行高带歪
+ */
+.cal-chip {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-cell {
+  overflow: hidden;
+}
