@@ -1,13 +1,14 @@
 import { app, BrowserWindow, Menu, net, protocol, shell, Tray, nativeImage } from 'electron'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, writeFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ipcMain } from 'electron'
 import { registerIpc } from './ipc'
 import { enrichBook, importMany } from './library'
 import { isInsideDataDir, setDataRoot } from './media'
-import { seedDemoStats } from './devseed'
+import { seedDemoBookmarks, seedDemoStats } from './devseed'
 import { Store, resolveDataDir } from './store'
 import { lanTransfer, startLanServer } from './lan'
 
@@ -44,6 +45,27 @@ if (dataDirOverride && dataDirOverride.trim()) {
 
 /** Windows 下 Electron 是 GUI 子系统进程，控制台日志可能丢失，因此同时写文件 */
 const logFile = process.env.DSH_LOG_FILE
+/** 崩溃兜底日志：直接同步写文件，任何异常都不再吞掉 */
+function crashLog(label: string, error: unknown): void {
+  const text = error instanceof Error ? (error.stack ?? error.message) : String(error)
+  const line = `[${new Date().toISOString()}] ${label} ${text}\n`
+  try {
+    process.stderr.write(line)
+  } catch {
+    /* 忽略 */
+  }
+  if (!logFile) return
+  try {
+    writeFileSync(`${logFile}.crash`, line, { flag: 'a' })
+  } catch {
+    try {
+      writeFileSync(join(tmpdir(), 'dsh-crash.log'), line, { flag: 'a' })
+    } catch {
+      /* 忽略 */
+    }
+  }
+}
+
 function log(...args: unknown[]): void {
   const line = `[${new Date().toISOString()}] ${args
     .map((a) => (typeof a === 'string' ? a : a instanceof Error ? (a.stack ?? a.message) : JSON.stringify(a)))
@@ -358,6 +380,9 @@ async function bootstrap(): Promise<void> {
   // 开发 / 截图用：写入示例阅读统计（不会在正式运行时执行）
   if (process.env.DSH_SEED_STATS) seedDemoStats(localStore)
 
+  // 开发 / 截图用：写入示例书签（摘录取真正文）
+  if (process.env.DSH_SEED_BOOKMARKS) await seedDemoBookmarks(localStore)
+
   protocol.handle('dsh', async (request) => {
     const url = new URL(request.url)
     if (url.hostname !== 'media') return new Response('Not Found', { status: 404 })
@@ -375,8 +400,11 @@ async function bootstrap(): Promise<void> {
       booksDir: localStore.booksDir,
       dataDir,
       // 手机推来的记录已写入文件 → 重读进内存并通知界面刷新（否则内存里的旧数据会在下次保存时覆盖回去）
-      onRecordsMerged: (info: { progress: number; sessions: number }) => {
+      onRecordsMerged: (info: { progress: number; sessions: number; finished: Record<string, string> }) => {
         lastRecordPush = { at: Date.now(), progress: info.progress, sessions: info.sessions }
+        // 「已读完」的并集由 lan.ts 落盘，这里并回 store 的内存状态
+        localStore.finished = { ...localStore.finished, ...info.finished }
+        localStore.save('finished')
         void localStore.reloadRecords().then(() => {
           if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('lan:changed')
         })
@@ -471,7 +499,10 @@ async function backfillLibrary(store: Store, win: BrowserWindow): Promise<void> 
 
 app.whenReady().then(() => {
   log('[boot] app ready')
-  void bootstrap().catch((error) => log('[boot] bootstrap 失败', error))
+  void bootstrap().catch((error) => {
+    log('[boot] bootstrap 失败', error)
+    crashLog('[boot] bootstrap 失败', error)
+  })
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = createWindow()

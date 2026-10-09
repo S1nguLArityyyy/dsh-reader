@@ -4,8 +4,9 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
-import type { Book, Progress, SessionRow, Settings } from '../shared/types'
+import type { Book, Bookmark, Progress, SessionRow, Settings } from '../shared/types'
 import { splitVolume, titleFromFileName } from './naming'
+import { BookmarkStore } from './bookmarks'
 import { percentByPosition } from '../shared/progress'
 
 /** 本地日期键 YYYY-MM-DD */
@@ -16,7 +17,7 @@ export function todayKey(d = new Date()): string {
   return `${y}-${m}-${day}`
 }
 
-type StoreFile = 'settings' | 'library' | 'progress' | 'sessions'
+type StoreFile = 'settings' | 'library' | 'progress' | 'sessions' | 'bookmarks' | 'finished'
 
 /**
  * 轻量 JSON 持久化层。
@@ -30,6 +31,14 @@ export class Store {
   books: Book[] = []
   progress: Record<string, Progress> = {}
   sessions: SessionRow[] = []
+  /** 书签（原文摘录 + 备注 + 章内位置） */
+  bookmarks: Bookmark[] = []
+  /**
+   * 手动标记「已读完」的书：`书 id → YYYY-MM-DD`。
+   * 只存在 library.json 里的话，手机端的标记传不过来也传不出去 ——
+   * 之前电脑端只能靠 percent >= 99% 推导，所以手机上标了读完这边没反应。
+   */
+  finished: Record<string, string> = {}
   settings!: Settings
 
   private timers = new Map<StoreFile, NodeJS.Timeout>()
@@ -37,6 +46,11 @@ export class Store {
   constructor(dataDir: string) {
     this.dataDir = dataDir
     this.booksDir = resolveBooksDir(dataDir)
+  }
+
+  /** 书签的业务操作入口（增删改查、上限、墓碑） */
+  get bookmarkStore(): BookmarkStore {
+    return new BookmarkStore(this.bookmarks)
   }
 
   get defaultBooksDir(): string {
@@ -81,6 +95,15 @@ export class Store {
   async reloadRecords(): Promise<void> {
     this.progress = await this.readJson<Record<string, Progress>>('progress', {})
     this.sessions = await this.readJson<SessionRow[]>('sessions', [])
+    this.finished = await this.readJson<Record<string, string>>('finished', {})
+  }
+
+  /** 标记 / 取消「已读完」 */
+  setFinished(bookId: string, value: boolean): void {
+    if (!bookId) return
+    if (value) this.finished[bookId] = todayKey()
+    else delete this.finished[bookId]
+    this.save('finished')
   }
 
   async init(): Promise<void> {
@@ -100,6 +123,11 @@ export class Store {
     this.books = await this.readJson<Book[]>('library', [])
     this.progress = await this.readJson<Record<string, Progress>>('progress', {})
     this.sessions = await this.readJson<SessionRow[]>('sessions', [])
+    this.bookmarks = await this.readJson<Bookmark[]>('bookmarks', [])
+    this.finished = await this.readJson<Record<string, string>>('finished', {})
+
+    // 书签：清理过期墓碑、修掉越界数据、同位置去重、裁剪超出上限的历史数据
+    if (this.bookmarkStore.sweep()) this.save('bookmarks')
 
     // 阅读时长行补上设备号（老数据都是本机产生的），同步时才分得清哪些条目是自己的
     let sessionsFixed = false
@@ -252,20 +280,23 @@ export class Store {
     await rename(tmp, target)
   }
 
+  /** 取某个文件当前该写盘的内容 */
+  private payloadOf(name: StoreFile): unknown {
+    if (name === 'settings') return this.settings
+    if (name === 'library') return this.books
+    if (name === 'progress') return this.progress
+    if (name === 'sessions') return this.sessions
+    if (name === 'finished') return this.finished
+    return this.bookmarks
+  }
+
   /** 防抖保存，避免高频写入 */
   save(name: StoreFile, immediate = false): void {
     const existing = this.timers.get(name)
     if (existing) clearTimeout(existing)
     const flush = async (): Promise<void> => {
       this.timers.delete(name)
-      const payload =
-        name === 'settings'
-          ? this.settings
-          : name === 'library'
-            ? this.books
-            : name === 'progress'
-              ? this.progress
-              : this.sessions
+      const payload = this.payloadOf(name)
       try {
         await this.writeJson(name, payload)
       } catch (err) {
@@ -280,19 +311,11 @@ export class Store {
   }
 
   async flushAll(): Promise<void> {
-    for (const name of ['settings', 'library', 'progress', 'sessions'] as StoreFile[]) {
+    for (const name of ['settings', 'library', 'progress', 'sessions', 'bookmarks', 'finished'] as StoreFile[]) {
       const t = this.timers.get(name)
       if (t) clearTimeout(t)
       this.timers.delete(name)
-      const payload =
-        name === 'settings'
-          ? this.settings
-          : name === 'library'
-            ? this.books
-            : name === 'progress'
-              ? this.progress
-              : this.sessions
-      await this.writeJson(name, payload)
+      await this.writeJson(name, this.payloadOf(name))
     }
   }
 

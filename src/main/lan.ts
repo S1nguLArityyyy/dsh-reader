@@ -51,7 +51,7 @@ export interface LanServerOptions {
   /** 桌面端数据目录（progress.json / sessions.json 在这里 ✓） */
   dataDir?: string
   /** 收到并合并了手机推来的记录（主进程据此重读记录并刷新界面） */
-  onRecordsMerged?: (info: { progress: number; sessions: number }) => void
+  onRecordsMerged?: (info: { progress: number; sessions: number; finished: Record<string, string> }) => void
   /** 取某本书的内容指纹（手机端据此在下载【之前】就跳过已有书 ✓ 省掉整本下载 ✓） */
   hashOf?: (fileName: string) => string | null
   /** 取某本书的主色（桌面端算好的 ✓ 手机端直接沿用 ✓ 两端一致 ✓） */
@@ -99,7 +99,11 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
   const pendingConflictFile = join(dataDirForState, 'lan-pending.json')
   let pendingConflicts: LanPendingConflict[] = []
   /** 本次推送被整体暂存的原始内容：裁决完成后才真正合并落盘 */
-  let pendingPayload: { progress: Record<string, unknown>; sessions: Array<Record<string, unknown>> } | null = null
+  let pendingPayload: {
+    progress: Record<string, unknown>
+    sessions: Array<Record<string, unknown>>
+    finished?: Record<string, string>
+  } | null = null
 
   const savePending = async (): Promise<void> => {
     try {
@@ -119,11 +123,19 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
       const raw = await readFile(pendingConflictFile, 'utf8')
       const parsed = JSON.parse(raw) as {
         conflicts?: LanPendingConflict[]
-        payload?: { progress?: Record<string, unknown>; sessions?: Array<Record<string, unknown>> } | null
+        payload?: {
+          progress?: Record<string, unknown>
+          sessions?: Array<Record<string, unknown>>
+          finished?: Record<string, string>
+        } | null
       }
       pendingConflicts = Array.isArray(parsed.conflicts) ? parsed.conflicts : []
       pendingPayload = parsed.payload
-        ? { progress: parsed.payload.progress ?? {}, sessions: parsed.payload.sessions ?? [] }
+        ? {
+            progress: parsed.payload.progress ?? {},
+            sessions: parsed.payload.sessions ?? [],
+            finished: parsed.payload.finished ?? {}
+          }
         : null
       if (pendingConflicts.length > 0) log(`[lan] 读回 ${pendingConflicts.length} 处未裁决的进度冲突`)
     } catch {
@@ -158,9 +170,14 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
    * 平时（无冲突）直接调用；有冲突时整批暂存，等用户裁决后再带 choices 调一次。
    */
   const mergeIntoFiles = async (
-    payloadIn: { progress: Record<string, unknown>; sessions: Array<Record<string, unknown>> },
+    payloadIn: {
+      progress: Record<string, unknown>
+      sessions: Array<Record<string, unknown>>
+      /** 手机标记的「已读完」：已归一化的书 id → 日期 */
+      finished?: Record<string, string>
+    },
     choices: Record<string, 'desktop' | 'phone'> = {}
-  ): Promise<{ progressMerged: number; sessionsMerged: number }> => {
+  ): Promise<{ progressMerged: number; sessionsMerged: number; finished: Record<string, string> }> => {
     const hashToId = await buildHashToId()
     const canonBookId = (id: string): string => {
       const bareId = String(id ?? '').toLowerCase().replace(/^sha1:/, '')
@@ -230,9 +247,20 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
       }
     }
 
+    // 手动「已读完」取并集：只要有一端标了就算读完（取消标记只在本地生效，
+    // 否则另一端的标记会立刻把它盖回来）
+    const beforeFinished = ((await readJson('finished')) ?? {}) as Record<string, string>
+    const finished: Record<string, string> = {}
+    for (const [id, day] of Object.entries(beforeFinished)) finished[canonBookId(id)] = String(day ?? '')
+    for (const [id, day] of Object.entries(payloadIn.finished ?? {})) {
+      if (day === null || day === undefined) continue
+      finished[canonBookId(id)] = String(day ?? '')
+    }
+
     await writeFile(join(dataDirForState, 'progress.json'), JSON.stringify(progress, null, 2), 'utf8')
     await writeFile(join(dataDirForState, 'sessions.json'), JSON.stringify(rows, null, 2), 'utf8')
-    return { progressMerged, sessionsMerged }
+    await writeFile(join(dataDirForState, 'finished.json'), JSON.stringify(finished, null, 2), 'utf8')
+    return { progressMerged, sessionsMerged, finished }
   }
 
   const server: Server = createServer((req, res) => {
@@ -318,7 +346,11 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
           const chunks: Buffer[] = []
           for await (const chunk of req) chunks.push(chunk as Buffer)
           const raw = Buffer.concat(chunks).toString('utf8')
-          let payload: { progress?: Record<string, unknown>; sessions?: Array<Record<string, unknown>> } = {}
+          let payload: {
+            progress?: Record<string, unknown>
+            sessions?: Array<Record<string, unknown>>
+            finished?: Record<string, string>
+          } = {}
           try {
             payload = JSON.parse(raw) as typeof payload
           } catch {
@@ -417,7 +449,8 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
             pendingConflicts = found
             pendingPayload = {
               progress: (payload.progress ?? {}) as Record<string, unknown>,
-              sessions: (payload.sessions ?? []) as Array<Record<string, unknown>>
+              sessions: (payload.sessions ?? []) as Array<Record<string, unknown>>,
+              finished: (payload.finished ?? {}) as Record<string, string>
             }
             await savePending()
             const body = JSON.stringify({ ok: true, pendingConflicts: found.length, progressMerged: 0, sessionsMerged: 0 })
@@ -430,12 +463,17 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
 
           const merged = await mergeIntoFiles({
             progress: (payload.progress ?? {}) as Record<string, unknown>,
-            sessions: (payload.sessions ?? []) as Array<Record<string, unknown>>
+            sessions: (payload.sessions ?? []) as Array<Record<string, unknown>>,
+            finished: (payload.finished ?? {}) as Record<string, string>
           })
           const body = JSON.stringify({ ok: true, ...merged })
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) })
           res.end(body)
-          options.onRecordsMerged?.({ progress: merged.progressMerged, sessions: merged.sessionsMerged })
+          options.onRecordsMerged?.({
+            progress: merged.progressMerged,
+            sessions: merged.sessionsMerged,
+            finished: merged.finished
+          })
           log(`[lan] 收到手机记录 → 进度 +${merged.progressMerged} · 时长 +${merged.sessionsMerged}（已备份 .bak ✓）`)
           return
         }
@@ -466,14 +504,23 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
             const id = String(row.bookId ?? '')
             return { ...row, bookId: idToHash.get(id) ?? id }
           })
-          const body = JSON.stringify({ progress, sessions, exportedAt: Date.now() })
+          // 手动标记的「已读完」也要导出，否则手机上看不到电脑这边标了什么
+          const finishedRaw = (await readJson('finished')) as Record<string, string> | null
+          const finished: Record<string, string> = {}
+          for (const [id, day] of Object.entries(finishedRaw ?? {})) {
+            const key = idToHash.get(id) ?? id
+            finished[key] = String(day ?? '')
+          }
+          const body = JSON.stringify({ progress, sessions, finished, exportedAt: Date.now() })
           res.writeHead(200, {
             'Content-Type': 'application/json; charset=utf-8',
             'Content-Length': Buffer.byteLength(body),
             'Cache-Control': 'no-store'
           })
           res.end(body)
-          log(`[lan] 记录导出 → 进度 ${Object.keys(progress).length} 条 · 时长 ${sessions.length} 条`)
+          log(
+            `[lan] 记录导出 → 进度 ${Object.keys(progress).length} 条 · 时长 ${sessions.length} 条 · 读完 ${Object.keys(finished).length} 本`
+          )
           return
         }
         if (url.pathname.startsWith('/books/')) {
@@ -544,7 +591,11 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
       await savePending()
       if (!saved) return { merged: 0 }
       const result = await mergeIntoFiles({ progress: saved.progress, sessions: saved.sessions }, choices)
-      options.onRecordsMerged?.({ progress: result.progressMerged, sessions: result.sessionsMerged })
+      options.onRecordsMerged?.({
+        progress: result.progressMerged,
+        sessions: result.sessionsMerged,
+        finished: result.finished
+      })
       log(`[lan] 冲突已裁决 → 进度 +${result.progressMerged} · 时长 +${result.sessionsMerged}`)
       return { merged: result.progressMerged }
     },

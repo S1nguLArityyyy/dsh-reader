@@ -4,6 +4,7 @@ import { extname, join } from 'node:path'
 import type {
   AppInfo,
   Book,
+  Bookmark,
   BookOpenPayload,
   ChapterPayload,
   ChapterRef,
@@ -12,6 +13,8 @@ import type {
   StatsPayload,
   TocEntry
 } from '../shared/types'
+import type { BookmarkInput, BookmarkSort } from '../shared/bookmarks'
+import { percentByPosition } from '../shared/progress'
 import { readChapter, readEpubMeta } from './epub'
 import type { LanPendingConflict } from './lan'
 import { ensureExtracted, flattenToc, importMany, removeBook, scanEpubFiles } from './library'
@@ -231,6 +234,10 @@ export function registerIpc(store: Store, lan: LanBridge = NO_LAN): void {
       Object.assign(book, patch)
       store.save('library')
     }
+    // 读完标记要单独存一份：它得能跟着记录同步走（library.json 不参与同步）
+    if (typeof (patch as { finished?: unknown }).finished === 'boolean') {
+      store.setFinished(id, (patch as { finished: boolean }).finished)
+    }
     return store.books
   })
 
@@ -291,6 +298,65 @@ export function registerIpc(store: Store, lan: LanBridge = NO_LAN): void {
   handle('reader:tick', (bookId: string, seconds: number) => {
     store.addReadingTime(bookId, seconds)
     return true
+  })
+
+  /* ---------------- 书签 ---------------- */
+
+  handle('bookmarks:list', (bookId?: string, sort: BookmarkSort = 'recent'): Bookmark[] =>
+    store.bookmarkStore.list(sort, bookId)
+  )
+
+  /** 某本书还能加几条书签（墓碑也占额度，见 shared/bookmarks.ts） */
+  handle('bookmarks:remaining', (bookId: string) => store.bookmarkStore.remaining(bookId))
+
+  handle('bookmarks:add', (input: BookmarkInput): Bookmark | null => {
+    const book = store.books.find((b) => b.id === input?.bookId)
+    if (!book) return null
+    // 整书进度以主进程为准：章内比例 × 各章字数，与底栏显示的是同一套算法
+    const percent = percentByPosition(
+      book.chapterChars,
+      book.wordCount,
+      input.chapterIndex,
+      input.scrollRatio
+    )
+    const created = store.bookmarkStore.add({ ...input, percent }, store.settings.deviceId)
+    if (created) store.save('bookmarks')
+    return created
+  })
+
+  handle(
+    'bookmarks:update',
+    (id: string, patch: { note?: string; scrollRatio?: number; excerpt?: string }): Bookmark | null => {
+      const current = store.bookmarks.find((item) => item.id === id)
+      if (!current) return null
+      let percent: number | undefined
+      if (patch?.scrollRatio !== undefined) {
+        const book = store.books.find((b) => b.id === current.bookId)
+        if (book) {
+          percent = percentByPosition(
+            book.chapterChars,
+            book.wordCount,
+            current.chapterIndex,
+            patch.scrollRatio
+          )
+        }
+      }
+      const updated = store.bookmarkStore.update(id, { ...(patch ?? {}), percent })
+      if (updated) store.save('bookmarks')
+      return updated
+    }
+  )
+
+  handle('bookmarks:remove', (id: string): Bookmark | null => {
+    const removed = store.bookmarkStore.remove(id)
+    if (removed) store.save('bookmarks')
+    return removed
+  })
+
+  handle('bookmarks:restore', (id: string): Bookmark | null => {
+    const restored = store.bookmarkStore.restore(id)
+    if (restored) store.save('bookmarks')
+    return restored
   })
 
   /* ---------------- 统计 ---------------- */
