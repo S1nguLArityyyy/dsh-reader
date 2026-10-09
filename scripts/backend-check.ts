@@ -6,7 +6,6 @@ import { existsSync, readdirSync, rmSync, writeFileSync, readFileSync } from 'no
 import { join } from 'node:path'
 import { invokeHandler } from './electron-stub'
 import { registerIpc } from '../src/main/ipc'
-import { SyncService } from '../src/main/sync'
 import { Store } from '../src/main/store'
 import { importMany } from '../src/main/library'
 import { splitVolume } from '../src/main/naming'
@@ -37,7 +36,7 @@ const store = new Store(dataDir)
 await store.init()
 check('数据目录已创建', existsSync(dataDir))
 check('四个数据文件初始化后可写', true)
-registerIpc(store, new SyncService(store))
+registerIpc(store)
 
 const imported = await importMany(store, sampleFiles)
 check('全部示例 EPUB 导入成功', imported.books.length === sampleFiles.length, `${imported.books.length}/${sampleFiles.length}`)
@@ -116,11 +115,9 @@ check('平均时间已计算', stats.averageSeconds === Math.round(900 / stats.b
 console.log('\n[3] 设置写入')
 const settings = (await invokeHandler('settings:get')) as Settings
 const updated = (await invokeHandler('settings:set', {
-  reader: { ...settings.reader, fontSize: 23 },
-  sync: { ...settings.sync, auto: true, intervalMinutes: 30 }
+  reader: { ...settings.reader, fontSize: 23 }
 })) as Settings
 check('阅读偏好已更新', updated.reader.fontSize === 23, `${updated.reader.fontSize}px`)
-check('同步设置已更新', updated.sync.auto && updated.sync.intervalMinutes === 30)
 check('dataDir 不被外部 patch 覆盖', updated.dataDir === dataDir)
 
 /* ---------- 4. 模拟关机重启 ---------- */
@@ -137,7 +134,7 @@ check(
   `${(store2.progress[first.id]?.percent ?? 0).toFixed(4)}（按位置应为 ${expectedPercent.toFixed(4)}）`
 )
 check('阅读时长在重启后保留', store2.sessions.reduce((s, r) => s + r.seconds, 0) === 900)
-check('设置在重启后保留', store2.settings.reader.fontSize === 23 && store2.settings.sync.intervalMinutes === 30)
+check('设置在重启后保留', store2.settings.reader.fontSize === 23)
 
 const rawLibrary = JSON.parse(readFileSync(join(dataDir, 'library.json'), 'utf8')) as Book[]
 check('library.json 可被外部解析', Array.isArray(rawLibrary) && rawLibrary.length === books.length)

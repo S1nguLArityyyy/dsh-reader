@@ -168,52 +168,7 @@ function setupTray(win: BrowserWindow): void {
         {
           label: '显示主窗口',
           click: () => {
-            if (mainWindow) {
-              mainWindow.show()
-              mainWindow.focus()
-            } else {
-              // 托盘与开机自启（这三个直接注册，不经过 ipc.ts 的 store 桥）
-  ipcMain.handle('app:hideToTray', () => {
-    mainWindow?.hide()
-    return true
-  })
-  // 便携版运行时程序被解压到临时目录，process.execPath 是那个临时路径，
-  // 拿它写登录项会立刻失效 —— 真实路径在 PORTABLE_EXECUTABLE_FILE 里
-  const loginItemPath = (): string => process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
-
-  ipcMain.handle('app:getAutoLaunch', () => {
-    const path = loginItemPath()
-    try {
-      // Windows 上必须把 args 一起比对：我们的记录带 --hidden，不传 args 就永远匹配不上
-      const withHidden = app.getLoginItemSettings({ path, args: ['--hidden'] }).openAtLogin
-      const plain = app.getLoginItemSettings({ path, args: [] }).openAtLogin
-      const fromExe = withHidden || plain
-      // 早期版本可能把临时路径写进去了，这里一并检查默认查询结果
-      return fromExe || app.getLoginItemSettings().openAtLogin
-    } catch (error) {
-      log('[autolaunch] 读取失败', String(error))
-      return false
-    }
-  })
-  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean, hideOnStart: boolean) => {
-    const path = loginItemPath()
-    log(`[autolaunch] 设置 openAtLogin=${enabled === true} hideOnStart=${hideOnStart === true} path=${path}`)
-    try {
-      app.setLoginItemSettings({
-        openAtLogin: enabled === true,
-        path,
-        args: hideOnStart === true ? ['--hidden'] : []
-      })
-      const now = app.getLoginItemSettings({ path, args: hideOnStart === true ? ['--hidden'] : [] }).openAtLogin
-      log(`[autolaunch] 设置后系统回报 openAtLogin=${now}`)
-      return now
-    } catch (error) {
-      log('[autolaunch] 设置失败', String(error))
-      return false
-    }
-  })
-  mainWindow = createWindow()
-            }
+            showMainWindow()
           }
         },
         { type: 'separator' },
@@ -326,10 +281,63 @@ async function runScreenshots(win: BrowserWindow, dir: string): Promise<void> {
   app.quit()
 }
 
+/** 便携版运行时程序被解压到临时目录，process.execPath 是那个临时路径，
+ *  拿它写登录项会立刻失效 —— 真实路径在 PORTABLE_EXECUTABLE_FILE 里 */
+function loginItemPath(): string {
+  return process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
+}
+
+/** 托盘与开机自启的 IPC（直接注册，不经过 ipc.ts 的 store 桥）。只能调一次。 */
+function registerAppHandlers(): void {
+  ipcMain.handle('app:hideToTray', () => {
+    mainWindow?.hide()
+    return true
+  })
+
+  ipcMain.handle('app:getAutoLaunch', () => {
+    const path = loginItemPath()
+    try {
+      // Windows 上必须把 args 一起比对：我们的记录带 --hidden，不传 args 就永远匹配不上
+      const withHidden = app.getLoginItemSettings({ path, args: ['--hidden'] }).openAtLogin
+      const plain = app.getLoginItemSettings({ path, args: [] }).openAtLogin
+      const fromExe = withHidden || plain
+      // 早期版本可能把临时路径写进去了，这里一并检查默认查询结果
+      return fromExe || app.getLoginItemSettings().openAtLogin
+    } catch (error) {
+      log('[autolaunch] 读取失败', String(error))
+      return false
+    }
+  })
+
+  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean, hideOnStart: boolean) => {
+    const path = loginItemPath()
+    log(`[autolaunch] 设置 openAtLogin=${enabled === true} hideOnStart=${hideOnStart === true} path=${path}`)
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: enabled === true,
+        path,
+        args: hideOnStart === true ? ['--hidden'] : []
+      })
+      const now = app.getLoginItemSettings({ path, args: hideOnStart === true ? ['--hidden'] : [] }).openAtLogin
+      log(`[autolaunch] 设置后系统回报 openAtLogin=${now}`)
+      return now
+    } catch (error) {
+      log('[autolaunch] 设置失败', String(error))
+      return false
+    }
+  })
+}
+
 async function bootstrap(): Promise<void> {
   log('[boot] 启动')
   const dataDir = resolveDataDir()
-  await mkdir(dataDir, { recursive: true })
+  try {
+    await mkdir(dataDir, { recursive: true })
+  } catch (error) {
+    // 数据目录建不出来（无权限 / 路径不可写）时说清楚，否则界面永远不出现、也没有任何线索
+    log(`[boot] 数据目录创建失败：${dataDir}`, String(error))
+    throw error
+  }
   setDataRoot(dataDir)
   log(`[boot] 数据目录 ${dataDir}`)
 
@@ -358,7 +366,8 @@ async function bootstrap(): Promise<void> {
     return net.fetch(pathToFileURL(raw).toString())
   })
 
-  registerIpc(localStore, { url: () => lanUrl, lastPush: () => lastRecordPush, transfer: () => lanTransfer() })
+  // 主窗口的托盘 / 开机自启 IPC：整个进程只注册一次
+  registerAppHandlers()
 
   // 局域网书籍直传：手机在同一个 WiFi 下可直接高速拉取本机书库（不经网盘、不限速）
   try {
@@ -369,18 +378,12 @@ async function bootstrap(): Promise<void> {
       onRecordsMerged: (info: { progress: number; sessions: number }) => {
         lastRecordPush = { at: Date.now(), progress: info.progress, sessions: info.sessions }
         void localStore.reloadRecords().then(() => {
-          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:changed')
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('lan:changed')
         })
-    // 服务地址写进了 lan.txt，读出来给界面显示
-    void readFile(join(app.getPath('userData'), 'lan.txt'), 'utf8')
-      .then((text) => {
-        const line = String(text)
-          .split('\n')
-          .map((s) => s.trim())
-          .find((s) => s.startsWith('http'))
-        if (line) lanUrl = line
-      })
-      .catch(() => undefined)
+      },
+      // 手机推来的记录与电脑端冲突 → 整批暂缓，弹窗请用户裁决
+      onConflictPending: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('lan:conflict')
       },
       // 手机端据此在下载之前就跳过已有书 ✓ 不必为了比对而下整本 ✓
       hashOf: (fileName: string) => {
@@ -396,49 +399,36 @@ async function bootstrap(): Promise<void> {
       log
     })
     log(`[lan] 手机端填这个地址：${lan.urls[0] ?? `http://<电脑IP>:${lan.port}`}`)
+    // 服务地址写进了 lan.txt，读出来给界面显示
+    void readFile(join(app.getPath('userData'), 'lan.txt'), 'utf8')
+      .then((text) => {
+        const line = String(text)
+          .split('\n')
+          .map((s) => s.trim())
+          .find((s) => s.startsWith('http'))
+        if (line) lanUrl = line
+      })
+      .catch(() => undefined)
+
+    registerIpc(localStore, {
+      url: () => lanUrl,
+      lastPush: () => lastRecordPush,
+      transfer: () => lanTransfer(),
+      pendingConflicts: () => lan.pendingConflicts(),
+      resolveConflicts: (choices) => lan.resolveConflicts(choices)
+    })
+    // 启动时若还有上次没裁决完的冲突，等界面就绪后提醒
+    const outstanding = lan.pendingConflicts()
+    if (outstanding.length > 0) {
+      log(`[lan] 有 ${outstanding.length} 处冲突等待裁决`)
+      mainWindow?.webContents.once('did-finish-load', () => {
+        mainWindow?.webContents.send('lan:conflict')
+      })
+    }
   } catch (error) {
     log(`[lan] 启动失败（端口 8787 被占用？）：${String(error)}`)
+    registerIpc(localStore, { url: () => lanUrl, lastPush: () => lastRecordPush, transfer: () => lanTransfer() })
   }
-  // 托盘与开机自启（这三个直接注册，不经过 ipc.ts 的 store 桥）
-  ipcMain.handle('app:hideToTray', () => {
-    mainWindow?.hide()
-    return true
-  })
-  // 便携版运行时程序被解压到临时目录，process.execPath 是那个临时路径，
-  // 拿它写登录项会立刻失效 —— 真实路径在 PORTABLE_EXECUTABLE_FILE 里
-  const loginItemPath = (): string => process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
-
-  ipcMain.handle('app:getAutoLaunch', () => {
-    const path = loginItemPath()
-    try {
-      // Windows 上必须把 args 一起比对：我们的记录带 --hidden，不传 args 就永远匹配不上
-      const withHidden = app.getLoginItemSettings({ path, args: ['--hidden'] }).openAtLogin
-      const plain = app.getLoginItemSettings({ path, args: [] }).openAtLogin
-      const fromExe = withHidden || plain
-      // 早期版本可能把临时路径写进去了，这里一并检查默认查询结果
-      return fromExe || app.getLoginItemSettings().openAtLogin
-    } catch (error) {
-      log('[autolaunch] 读取失败', String(error))
-      return false
-    }
-  })
-  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean, hideOnStart: boolean) => {
-    const path = loginItemPath()
-    log(`[autolaunch] 设置 openAtLogin=${enabled === true} hideOnStart=${hideOnStart === true} path=${path}`)
-    try {
-      app.setLoginItemSettings({
-        openAtLogin: enabled === true,
-        path,
-        args: hideOnStart === true ? ['--hidden'] : []
-      })
-      const now = app.getLoginItemSettings({ path, args: hideOnStart === true ? ['--hidden'] : [] }).openAtLogin
-      log(`[autolaunch] 设置后系统回报 openAtLogin=${now}`)
-      return now
-    } catch (error) {
-      log('[autolaunch] 设置失败', String(error))
-      return false
-    }
-  })
   mainWindow = createWindow()
   const win = mainWindow
   setupTray(win)
@@ -456,13 +446,6 @@ async function bootstrap(): Promise<void> {
   })
 
 }
-
-/** 同步跑完后通知界面刷新：进度、今日阅读显示的是哪本书、统计数字都可能变了 */
-function notifySyncChanged(): void {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:changed')
-}
-
-/** 每分钟检查一次是否到了自动同步间隔；改设置不用重建定时器 */
 
 /** 后台补齐旧书信息，每补一本就通知渲染进程刷新 */
 async function backfillLibrary(store: Store, win: BrowserWindow): Promise<void> {
@@ -488,50 +471,10 @@ async function backfillLibrary(store: Store, win: BrowserWindow): Promise<void> 
 
 app.whenReady().then(() => {
   log('[boot] app ready')
-  void bootstrap()
+  void bootstrap().catch((error) => log('[boot] bootstrap 失败', error))
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      // 托盘与开机自启（这三个直接注册，不经过 ipc.ts 的 store 桥）
-  ipcMain.handle('app:hideToTray', () => {
-    mainWindow?.hide()
-    return true
-  })
-  // 便携版运行时程序被解压到临时目录，process.execPath 是那个临时路径，
-  // 拿它写登录项会立刻失效 —— 真实路径在 PORTABLE_EXECUTABLE_FILE 里
-  const loginItemPath = (): string => process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
-
-  ipcMain.handle('app:getAutoLaunch', () => {
-    const path = loginItemPath()
-    try {
-      // Windows 上必须把 args 一起比对：我们的记录带 --hidden，不传 args 就永远匹配不上
-      const withHidden = app.getLoginItemSettings({ path, args: ['--hidden'] }).openAtLogin
-      const plain = app.getLoginItemSettings({ path, args: [] }).openAtLogin
-      const fromExe = withHidden || plain
-      // 早期版本可能把临时路径写进去了，这里一并检查默认查询结果
-      return fromExe || app.getLoginItemSettings().openAtLogin
-    } catch (error) {
-      log('[autolaunch] 读取失败', String(error))
-      return false
-    }
-  })
-  ipcMain.handle('app:setAutoLaunch', (_event, enabled: boolean, hideOnStart: boolean) => {
-    const path = loginItemPath()
-    log(`[autolaunch] 设置 openAtLogin=${enabled === true} hideOnStart=${hideOnStart === true} path=${path}`)
-    try {
-      app.setLoginItemSettings({
-        openAtLogin: enabled === true,
-        path,
-        args: hideOnStart === true ? ['--hidden'] : []
-      })
-      const now = app.getLoginItemSettings({ path, args: hideOnStart === true ? ['--hidden'] : [] }).openAtLogin
-      log(`[autolaunch] 设置后系统回报 openAtLogin=${now}`)
-      return now
-    } catch (error) {
-      log('[autolaunch] 设置失败', String(error))
-      return false
-    }
-  })
-  mainWindow = createWindow()
+      mainWindow = createWindow()
       void loadRoute(mainWindow, 'library', '')
     }
   })
