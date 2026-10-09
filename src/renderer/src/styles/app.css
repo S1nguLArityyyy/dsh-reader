@@ -2303,6 +2303,31 @@
   background: var(--primary);
 }
 
+/* 系列标题后的复选框：勾上即选中/取消整个系列（多选模式下才出现） */
+.group-check {
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  border-radius: 5px;
+  border: 1.5px solid var(--border-2);
+  background: var(--panel);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.group-check:hover {
+  border-color: var(--primary);
+}
+
+.group-check.on {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
 .book-item.selected .book-cover {
   outline: 2px solid var(--primary);
   outline-offset: 1px;

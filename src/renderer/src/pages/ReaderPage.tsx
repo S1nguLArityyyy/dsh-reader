@@ -126,6 +126,31 @@ export function ReaderPage() {
     }
   }, [bookId, persist])
 
+  /** 翻页模式下用于识别"换章了"：换章要回到开头，切模式/改排版不能回到开头 */
+  const pagedChapter = useRef<number | null>(null)
+  /** 上一次的阅读模式：用来识别"刚切回滚动模式" */
+  const prevMode = useRef<'scroll' | 'paged'>('scroll')
+
+  /*
+   * 从翻页切回滚动：必须**主动**把滚动位置恢复回去。
+   * 分页时滚动容器里是 .reader-viewport，滚动位置一直是 0；
+   * 切回滚动后没有任何东西会把它设回来，于是看着就像"跳回本章开头"。
+   * 用 useLayoutEffect 在浏览器绘制前设好，用户看不到跳动。
+   */
+  useLayoutEffect(() => {
+    const cameFromPaged = prevMode.current === 'paged'
+    prevMode.current = mode
+    if (!cameFromPaged || mode !== 'scroll') return
+    const el = bodyRef.current
+    if (!el) return
+    const value = ratioRef.current
+    if (value <= 0.005) return
+    const max = el.scrollHeight - el.clientHeight
+    if (max <= 0) return
+    el.scrollTop = max * value
+    setRatio(value)
+  }, [mode, html, chapterIndex])
+
   /* ---------- 滚动模式的进度 ---------- */
   useEffect(() => {
     const el = bodyRef.current
@@ -160,9 +185,24 @@ export function ReaderPage() {
     const totalColumns = Math.max(1, Math.round((el.scrollWidth + COLUMN_GAP) / (columnWidth + COLUMN_GAP)))
     const screens = Math.max(1, Math.ceil(totalColumns / columns))
     setPages(screens)
-    setPage(0)
-    ratioRef.current = 0
-    setRatio(0)
+
+    // ★ 换章必须回到章首，但切模式 / 改排版 / 缩放窗口不能 ★
+    //   之前这里无条件 setPage(0) + ratio=0，于是"阅读中切滚动↔翻页"会跳回本章开头（用户反馈的 bug）
+    if (pagedChapter.current !== chapterIndex) {
+      pagedChapter.current = chapterIndex
+      ratioRef.current = 0
+      setRatio(0)
+      setPage(0)
+      return
+    }
+
+    // 同章内的重新分页：按当前位置换算成新的页码，别把读者拽回开头
+    const current = ratioRef.current
+    if (current > 0.005) {
+      setPage(Math.max(0, Math.min(screens - 1, Math.round(current * screens))))
+    } else {
+      setPage(0)
+    }
   }, [mode, columnWidth, columns, html, chapterIndex, readerSettings?.fontSize, readerSettings?.lineHeight, bodySize.width])
 
   /* ---------- 换章时把滚动位置复位（否则新章会停在末尾，看起来像卡住） ---------- */
