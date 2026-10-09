@@ -4,6 +4,7 @@ import { useApp, type Route } from './store/app'
 import { Sidebar } from './components/Sidebar'
 import { Toaster } from './components/ui'
 import { BookDetailModal } from './components/BookDetailModal'
+import { LanConflictModal } from './components/LanConflictModal'
 import { LibraryPage } from './pages/LibraryPage'
 import { StatsPage } from './pages/StatsPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -160,6 +161,7 @@ export default function App() {
       ) : null}
 
       <BookDetailModal />
+      <LanConflictModal />
       <Toaster />
     </>
   )

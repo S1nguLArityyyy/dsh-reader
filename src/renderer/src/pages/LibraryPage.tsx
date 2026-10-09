@@ -3,7 +3,6 @@ import {
   BookPlus,
   Check,
   CheckSquare,
-  CloudUpload,
   EyeOff,
   FolderOpen,
   FolderPlus,
@@ -22,7 +21,7 @@ import { BookCover } from '../components/BookCover'
 import { CollectionModal } from '../components/CollectionModal'
 import { Dropdown, EmptyState, ProgressRing } from '../components/ui'
 import { coverFade, percentText, remainingText } from '../lib/format'
-import { groupBooks, sortBooks } from '../lib/library'
+import { SINGLES_KEY, groupBooks, sortBooks } from '../lib/library'
 
 export function LibraryPage() {
   const books = useApp((s) => s.books)
@@ -192,18 +191,6 @@ export function LibraryPage() {
                     <FolderOpen size={14} />
                     在文件夹中显示
                   </button>
-                  <button
-                    disabled
-                    title="网盘同步将在 M5 接入"
-                    onClick={() => {
-                      close()
-                      toast('info', '书籍文件上传将在同步阶段接入')
-                    }}
-                  >
-                    <CloudUpload size={14} />
-                    {book.syncUpload ? '取消上传到网盘' : '上传到网盘'}
-                  </button>
-                  <hr />
                   <button
                     onClick={() => {
                       close()
@@ -464,25 +451,26 @@ export function LibraryPage() {
               <section className="lib-section" key={group.key}>
                 <div className="lib-section-head">
                   <h2 className="section-title">
-                    {group.title}
+                    <span className="section-name">{group.title}</span>
+                    {/* 标题后接复选框：勾上就是选中/取消整个系列（「单册书籍」不是系列，不给） */}
+                    {selectMode && group.key !== SINGLES_KEY ? (
+                      <button
+                        className={`group-check${group.books.every((b) => selected.includes(b.id)) ? ' on' : ''}`}
+                        title={`选中/取消「${group.title}」全部 ${group.books.length} 本`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          const ids = group.books.map((b) => b.id)
+                          const allChosen = ids.every((id) => selected.includes(id))
+                          ids.forEach((id) => {
+                            const has = selected.includes(id)
+                            if (allChosen ? has : !has) toggleSelected(id)
+                          })
+                        }}
+                      >
+                        {group.books.every((b) => selected.includes(b.id)) ? <Check size={13} /> : null}
+                      </button>
+                    ) : null}
                     <span className="section-count">{group.books.length}</span>
-{selectMode ? (
-                  <button
-                    className={`book-check${group.books.every((b) => selected.includes(b.id)) ? ' on' : ''}`}
-                    title="选中/取消本合集全部书籍"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      const ids = group.books.map((b) => b.id)
-                      const allChosen = ids.every((id) => selected.includes(id))
-                      ids.forEach((id) => {
-                        const has = selected.includes(id)
-                        if (allChosen ? has : !has) toggleSelected(id)
-                      })
-                    }}
-                  >
-                    {group.books.every((b) => selected.includes(b.id)) ? <Check size={14} /> : null}
-                  </button>
-                ) : null}
                     {group.manual ? <span className="group-tag manual">手动合集</span> : null}
                     {group.fuzzy ? <span className="group-tag fuzzy">模糊匹配</span> : null}
                   </h2>

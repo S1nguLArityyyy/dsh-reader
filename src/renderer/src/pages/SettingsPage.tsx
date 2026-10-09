@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
 import {
-  AlertTriangle,
-  Cloud,
   Eye,
   FileDown,
   FileUp,
@@ -74,20 +72,13 @@ export function SettingsPage() {
   }
   const [logOpen, setLogOpen] = useState(false)
   const info = useApp((s) => s.info)
-  const sync = useApp((s) => s.sync)
   const saveSettings = useApp((s) => s.saveSettings)
-  const setSyncModal = useApp((s) => s.setSyncModal)
-  const previewConflicts = useApp((s) => s.previewConflicts)
-  const connectSync = useApp((s) => s.connectSync)
-  const logoutSync = useApp((s) => s.logoutSync)
-  const markAllSyncUpload = useApp((s) => s.markAllSyncUpload)
   const toast = useApp((s) => s.toast)
 
 
   if (!settings) return <div className="page" />
 
   const reader = settings.reader
-  const syncSettings = settings.sync
   const appearance = settings.appearance
   const theme = READER_THEMES[reader.theme]
 
@@ -459,7 +450,6 @@ export function SettingsPage() {
         </section>
 
 
-        {/* ---------- 网盘同步 ---------- */}
         {/* ---------- 局域网服务 ---------- */}
         <section className="setting-card">
           <h3>局域网服务</h3>

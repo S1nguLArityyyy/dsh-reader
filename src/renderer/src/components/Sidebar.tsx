@@ -44,8 +44,6 @@ export function Sidebar() {
   const setSeriesFilter = useApp((s) => s.setSeriesFilter)
   const seriesOpen = useApp((s) => s.seriesOpen)
   const toggleSeries = useApp((s) => s.toggleSeries)
-  const sync = useApp((s) => s.sync)
-  const setSyncModal = useApp((s) => s.setSyncModal)
 
   const inLibrary = route === 'library' || route === 'reader'
   const groups = useMemo(() => groupBooks(books), [books])

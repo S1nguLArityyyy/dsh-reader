@@ -29,7 +29,7 @@ const env = {
   DSH_DATA_DIR: dataDir,
   DSH_SHOT_DIR: shotDir,
   DSH_LOG_FILE: join(root, 'shots', 'main.log'),
-  DSH_SHOT_LIST: process.env.SHOTS ?? 'library,stats,settings,library:sync,settings:conflict,reader',
+  DSH_SHOT_LIST: process.env.SHOTS ?? 'library,stats,settings,reader,library:detail',
   DSH_SEED_STATS: '1'
 }
 delete env.ELECTRON_RUN_AS_NODE

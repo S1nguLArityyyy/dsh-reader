@@ -27,8 +27,7 @@ if (!edge) {
 }
 
 const SHOTS = (
-  process.env.SHOTS ??
-  'library,stats,settings,reader,library:sync,settings:conflict,stats::cal=heatmap,library::preview=nobooks,stats::preview=dark,reader::preview=paged'
+  process.env.SHOTS ?? 'library,stats,settings,reader,library:detail'
 ).split(',')
 
 mkdirSync(shotDir, { recursive: true })

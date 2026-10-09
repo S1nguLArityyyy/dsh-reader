@@ -31,6 +31,20 @@ export function lanTransfer(): LanTransfer | null {
   return currentTransfer
 }
 
+/** 待用户裁决的进度冲突（手机推来的记录与电脑端都有改动） */
+export interface LanPendingConflict {
+  bookId: string
+  title: string
+  /** 手机推来的那一份 */
+  phonePercent: number
+  phoneAt: number
+  phoneChapterTitle: string
+  /** 电脑端当前的这一份 */
+  desktopPercent: number
+  desktopAt: number
+  desktopChapterTitle: string
+}
+
 export interface LanServerOptions {
   /** 书籍目录（电脑本地书库） */
   booksDir: string
@@ -44,6 +58,11 @@ export interface LanServerOptions {
   colorOf?: (fileName: string) => string | null
   /** 写入地址信息的文件（可选） */
   infoFile?: string
+  /**
+   * 手机推来的记录与电脑端冲突时触发：这批记录**暂不落盘**，等用户裁决。
+   * 参数是本次推送涉及的冲突本数。
+   */
+  onConflictPending?: (info: { count: number }) => void
   port?: number
   log?: (line: string) => void
 }
@@ -51,6 +70,10 @@ export interface LanServerOptions {
 export interface LanServerHandle {
   port: number
   urls: string[]
+  /** 待裁决的进度冲突（没有则为空数组） */
+  pendingConflicts: () => LanPendingConflict[]
+  /** 应用用户裁决：choice 是 bookId → 采用哪一边；没有出现在里面的按"手机那份"处理 */
+  resolveConflicts: (choices: Record<string, 'desktop' | 'phone'>) => Promise<{ merged: number }>
   close: () => Promise<void>
 }
 
@@ -70,6 +93,147 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
   const port = options.port ?? 8787
   const booksDir = options.booksDir
   const log = options.log ?? (() => undefined)
+  const dataDirForState = options.dataDir ?? booksDir
+
+  /* ---------------- 待裁决的进度冲突（暂不落盘，等用户在电脑上选择） ---------------- */
+  const pendingConflictFile = join(dataDirForState, 'lan-pending.json')
+  let pendingConflicts: LanPendingConflict[] = []
+  /** 本次推送被整体暂存的原始内容：裁决完成后才真正合并落盘 */
+  let pendingPayload: { progress: Record<string, unknown>; sessions: Array<Record<string, unknown>> } | null = null
+
+  const savePending = async (): Promise<void> => {
+    try {
+      await writeFile(
+        pendingConflictFile,
+        JSON.stringify({ at: Date.now(), conflicts: pendingConflicts, payload: pendingPayload }, null, 2),
+        'utf8'
+      )
+    } catch {
+      /* 写不进去也不影响本次同步 */
+    }
+  }
+
+  /** 启动时读回上次没裁决完的冲突（重启不丢） */
+  const loadPending = async (): Promise<void> => {
+    try {
+      const raw = await readFile(pendingConflictFile, 'utf8')
+      const parsed = JSON.parse(raw) as {
+        conflicts?: LanPendingConflict[]
+        payload?: { progress?: Record<string, unknown>; sessions?: Array<Record<string, unknown>> } | null
+      }
+      pendingConflicts = Array.isArray(parsed.conflicts) ? parsed.conflicts : []
+      pendingPayload = parsed.payload
+        ? { progress: parsed.payload.progress ?? {}, sessions: parsed.payload.sessions ?? [] }
+        : null
+      if (pendingConflicts.length > 0) log(`[lan] 读回 ${pendingConflicts.length} 处未裁决的进度冲突`)
+    } catch {
+      /* 没有待裁决文件是常态 */
+    }
+  }
+  await loadPending()
+
+  const canonDeviceId = (id: unknown): string => {
+    const v = String(id ?? '').trim()
+    if (!v || v === 'mobile') return 'mobile-local'
+    return v
+  }
+
+  /** 从书目重建「内容指纹 → 书目 id」映射（历史数据里两种键都存过） */
+  const buildHashToId = async (): Promise<Map<string, string>> => {
+    const map = new Map<string, string>()
+    try {
+      const raw = await readFile(join(dataDirForState, 'library.json'), 'utf8')
+      const lib = JSON.parse(raw) as Array<{ id?: string; contentHash?: string | null }>
+      for (const item of lib) {
+        if (item?.id && item.contentHash) map.set(String(item.contentHash).toLowerCase(), item.id)
+      }
+    } catch {
+      /* 没有书目就按原键处理 */
+    }
+    return map
+  }
+
+  /**
+   * 把手机推来的一批记录按当前磁盘状态合并落盘。
+   * 平时（无冲突）直接调用；有冲突时整批暂存，等用户裁决后再带 choices 调一次。
+   */
+  const mergeIntoFiles = async (
+    payloadIn: { progress: Record<string, unknown>; sessions: Array<Record<string, unknown>> },
+    choices: Record<string, 'desktop' | 'phone'> = {}
+  ): Promise<{ progressMerged: number; sessionsMerged: number }> => {
+    const hashToId = await buildHashToId()
+    const canonBookId = (id: string): string => {
+      const bareId = String(id ?? '').toLowerCase().replace(/^sha1:/, '')
+      return hashToId.get(bareId) ?? String(id)
+    }
+    const readJson = async (name: string): Promise<unknown> => {
+      try {
+        return JSON.parse(await readFile(join(dataDirForState, `${name}.json`), 'utf8')) as unknown
+      } catch {
+        return null
+      }
+    }
+    const beforeProgress = ((await readJson('progress')) ?? {}) as Record<string, Record<string, unknown>>
+    const beforeSessions = ((await readJson('sessions')) ?? []) as Array<Record<string, unknown>>
+
+    const progress: Record<string, Record<string, unknown>> = {}
+    for (const [rawKey, row] of Object.entries(beforeProgress)) {
+      const key = canonBookId(rawKey)
+      const prev = progress[key]
+      if (!prev || Number(row?.updatedAt ?? 0) > Number(prev?.updatedAt ?? 0)) progress[key] = { ...row, bookId: key }
+    }
+
+    // 时长按 (书, 日期, 设备) 取较大值，与进度冲突无关
+    let sessionsMerged = 0
+    const deduped = new Map<string, Record<string, unknown>>()
+    for (const row of beforeSessions) {
+      const bookKey = canonBookId(String(row.bookId))
+      const dedupKey = bookKey + '|' + String(row.day) + '|' + canonDeviceId(row.deviceId)
+      const prev = deduped.get(dedupKey)
+      if (!prev || Number(row.seconds ?? 0) > Number(prev.seconds ?? 0)) {
+        deduped.set(dedupKey, { ...row, bookId: bookKey })
+      }
+    }
+    const rows = [...deduped.values()]
+    for (const incoming of payloadIn.sessions) {
+      const rawId = String(incoming.bookId ?? '')
+      const bareSession = rawId.toLowerCase().replace(/^sha1:/, '')
+      const key = hashToId.get(bareSession) ?? hashToId.get(rawId.toLowerCase()) ?? rawId
+      const day = String(incoming.day ?? '')
+      if (!key || !day) continue
+      const deviceId = canonDeviceId(incoming.deviceId)
+      const seconds = Number(incoming.seconds ?? 0)
+      const index = rows.findIndex(
+        (row) => String(row.bookId) === key && String(row.day) === day && canonDeviceId(row.deviceId) === deviceId
+      )
+      if (index >= 0) {
+        if (seconds > Number(rows[index].seconds ?? 0)) {
+          rows[index] = { ...rows[index], seconds }
+          sessionsMerged += 1
+        }
+      } else {
+        rows.push({ bookId: key, day, seconds, deviceId })
+        sessionsMerged += 1
+      }
+    }
+
+    let progressMerged = 0
+    for (const [rawId, record] of Object.entries(payloadIn.progress)) {
+      const bare = String(rawId).toLowerCase().replace(/^sha1:/, '')
+      const key = hashToId.get(bare) ?? hashToId.get(String(rawId).toLowerCase()) ?? String(rawId)
+      const incoming = record as Record<string, unknown>
+      const mine = progress[key]
+      if (choices[key] === 'desktop') continue // 用户选择保留电脑端
+      if (choices[key] === 'phone' || Number(incoming?.updatedAt ?? 0) > Number(mine?.updatedAt ?? 0)) {
+        progress[key] = { ...incoming, bookId: key }
+        progressMerged += 1
+      }
+    }
+
+    await writeFile(join(dataDirForState, 'progress.json'), JSON.stringify(progress, null, 2), 'utf8')
+    await writeFile(join(dataDirForState, 'sessions.json'), JSON.stringify(rows, null, 2), 'utf8')
+    return { progressMerged, sessionsMerged }
+  }
 
   const server: Server = createServer((req, res) => {
     void (async () => {
@@ -207,62 +371,72 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
             /* 诊断写入失败不影响同步 */
           }
 
-          const progress: Record<string, Record<string, unknown>> = {}
+          /* ---- 冲突判定：手机这份更新，且电脑端在上次推送之后也动过这本书 ---- */
+          let lastPushAt = 0
+          try {
+            const raw = JSON.parse(await readFile(join(dir, 'last-push.json'), 'utf8')) as { at?: number }
+            lastPushAt = Number(raw?.at ?? 0)
+          } catch {
+            lastPushAt = 0
+          }
+
+          // 电脑端当前进度（已归一键）
+          const desktopNow: Record<string, Record<string, unknown>> = {}
           for (const [rawKey, row] of Object.entries(before.progress ?? {})) {
             const key = canonBookId(rawKey)
-            const prev = progress[key]
-            if (!prev || Number(row?.updatedAt ?? 0) > Number(prev?.updatedAt ?? 0)) progress[key] = { ...row, bookId: key }
+            const prev = desktopNow[key]
+            if (!prev || Number(row?.updatedAt ?? 0) > Number(prev?.updatedAt ?? 0)) desktopNow[key] = row as Record<string, unknown>
           }
-          let progressMerged = 0
+
+          const found: LanPendingConflict[] = []
           for (const [rawId, record] of Object.entries(payload.progress ?? {})) {
             const bare = String(rawId).toLowerCase().replace(/^sha1:/, '')
             const key = hashToId.get(bare) ?? hashToId.get(String(rawId).toLowerCase()) ?? String(rawId)
             const incoming = record as Record<string, unknown>
-            const mine = progress[key]
-            if (Number(incoming?.updatedAt ?? 0) > Number(mine?.updatedAt ?? 0)) {
-              progress[key] = { ...incoming, bookId: key }
-              progressMerged += 1
-            }
+            const phoneAt = Number(incoming?.updatedAt ?? 0)
+            const mine = desktopNow[key]
+            const desktopAt = Number(mine?.updatedAt ?? 0)
+            // 手机这份不新 → 没什么好问的
+            if (phoneAt <= desktopAt) continue
+            // 电脑端自从上次推送之后没动过这本书 → 直接采用手机的
+            if (desktopAt <= lastPushAt) continue
+            found.push({
+              bookId: key,
+              title: String((mine?.chapterTitle as string) ?? '') || key.replace(/^sha1:/, '').slice(0, 8),
+              phonePercent: Number(incoming.percent ?? 0),
+              phoneAt,
+              phoneChapterTitle: String(incoming.chapterTitle ?? ''),
+              desktopPercent: Number(mine?.percent ?? 0),
+              desktopAt,
+              desktopChapterTitle: String(mine?.chapterTitle ?? '')
+            })
           }
-          let sessionsMerged = 0
-          const deduped = new Map<string, Record<string, unknown>>()
-          for (const row of before.sessions ?? []) {
-            const bookKey = canonBookId(String(row.bookId))
-            const dedupKey = bookKey + '|' + String(row.day) + '|' + canonDeviceId(row.deviceId)
-            const prev = deduped.get(dedupKey)
-            if (!prev || Number(row.seconds ?? 0) > Number(prev.seconds ?? 0)) {
-              deduped.set(dedupKey, { ...row, bookId: bookKey })
+
+          if (found.length > 0) {
+            // ★ 整批暂缓 ★ 不落盘，等用户在电脑上裁决（本次的书籍文件不会因此丢失，手机下次还会推）
+            pendingConflicts = found
+            pendingPayload = {
+              progress: (payload.progress ?? {}) as Record<string, unknown>,
+              sessions: (payload.sessions ?? []) as Array<Record<string, unknown>>
             }
+            await savePending()
+            const body = JSON.stringify({ ok: true, pendingConflicts: found.length, progressMerged: 0, sessionsMerged: 0 })
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) })
+            res.end(body)
+            options.onConflictPending?.({ count: found.length })
+            log(`[lan] 收到 ${found.length} 处进度冲突 → 已暂缓，等待电脑端裁决`)
+            return
           }
-          const rows = [...deduped.values()]
-          for (const incoming of payload.sessions ?? []) {
-            const rawId = String(incoming.bookId ?? '')
-            const bareSession = rawId.toLowerCase().replace(/^sha1:/, '')
-            const key = hashToId.get(bareSession) ?? hashToId.get(rawId.toLowerCase()) ?? rawId
-            const day = String(incoming.day ?? '')
-            if (!key || !day) continue
-            const deviceId = canonDeviceId(incoming.deviceId)
-            const seconds = Number(incoming.seconds ?? 0)
-            const index = rows.findIndex(
-              (row) => String(row.bookId) === key && String(row.day) === day && canonDeviceId(row.deviceId) === deviceId
-            )
-            if (index >= 0) {
-              if (seconds > Number(rows[index].seconds ?? 0)) {
-                rows[index] = { ...rows[index], seconds }
-                sessionsMerged += 1
-              }
-            } else {
-              rows.push({ bookId: key, day, seconds, deviceId })
-              sessionsMerged += 1
-            }
-          }
-          await writeFile(join(dir, 'progress.json'), JSON.stringify(progress, null, 2), 'utf8')
-          await writeFile(join(dir, 'sessions.json'), JSON.stringify(rows, null, 2), 'utf8')
-          const body = JSON.stringify({ ok: true, progressMerged, sessionsMerged })
+
+          const merged = await mergeIntoFiles({
+            progress: (payload.progress ?? {}) as Record<string, unknown>,
+            sessions: (payload.sessions ?? []) as Array<Record<string, unknown>>
+          })
+          const body = JSON.stringify({ ok: true, ...merged })
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) })
           res.end(body)
-          options.onRecordsMerged?.({ progress: progressMerged, sessions: sessionsMerged })
-          log(`[lan] 收到手机记录 → 进度 +${progressMerged} · 时长 +${sessionsMerged}（已备份 .bak ✓）`)
+          options.onRecordsMerged?.({ progress: merged.progressMerged, sessions: merged.sessionsMerged })
+          log(`[lan] 收到手机记录 → 进度 +${merged.progressMerged} · 时长 +${merged.sessionsMerged}（已备份 .bak ✓）`)
           return
         }
         if (url.pathname === '/records') {
@@ -358,6 +532,22 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
   return {
     port,
     urls,
+    pendingConflicts: () => pendingConflicts,
+    /**
+     * 用户在电脑上裁决完冲突：把暂存的那批记录按选择合并落盘。
+     * 没出现在 choices 里的按「手机那份」处理（用户没改的就听手机的，与手机端默认一致）。
+     */
+    resolveConflicts: async (choices) => {
+      const saved = pendingPayload
+      pendingConflicts = []
+      pendingPayload = null
+      await savePending()
+      if (!saved) return { merged: 0 }
+      const result = await mergeIntoFiles({ progress: saved.progress, sessions: saved.sessions }, choices)
+      options.onRecordsMerged?.({ progress: result.progressMerged, sessions: result.sessionsMerged })
+      log(`[lan] 冲突已裁决 → 进度 +${result.progressMerged} · 时长 +${result.sessionsMerged}`)
+      return { merged: result.progressMerged }
+    },
     close: () =>
       new Promise<void>((resolve) => {
         server.close(() => resolve())

@@ -24,8 +24,6 @@ export function BookDetailModal() {
   const stats = useApp((s) => s.stats)
   const closeDetail = useApp((s) => s.closeDetail)
   const openReader = useApp((s) => s.openReader)
-  const updateBook = useApp((s) => s.updateBook)
-  const uploadBooks = useApp((s) => s.settings?.sync.uploadBooks ?? false)
 
   const book = books.find((b) => b.id === detailBookId) ?? null
   const stat = stats?.books.find((item) => item.bookId === detailBookId)
@@ -86,22 +84,6 @@ export function BookDetailModal() {
           <div className="detail-desc">
             <h3>书籍简介</h3>
             <p>{book.description || '这本书没有提供简介。'}</p>
-          </div>
-
-          <div className="detail-file" style={{ marginBottom: 8 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={book.syncUpload}
-                onChange={(e) => void updateBook(book.id, { syncUpload: e.target.checked })}
-              />
-              <span>同步到云端（把这本书的文件也传上去）</span>
-            </label>
-            <span>
-              {uploadBooks
-                ? '同步时上传，云端已有同一份会跳过'
-                : '需要先在「设置 → 网盘同步」里打开「同步书籍文件」'}
-            </span>
           </div>
 
           <div className="detail-file">

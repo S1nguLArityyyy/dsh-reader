@@ -7,13 +7,13 @@ import type {
   BookOpenPayload,
   ChapterPayload,
   ChapterRef,
-  ConflictItem,
   Progress,
   Settings,
   StatsPayload,
   TocEntry
 } from '../shared/types'
 import { readChapter, readEpubMeta } from './epub'
+import type { LanPendingConflict } from './lan'
 import { ensureExtracted, flattenToc, importMany, removeBook, scanEpubFiles } from './library'
 import { toMediaUrl } from './media'
 import { computeStats } from './stats'
@@ -32,7 +32,6 @@ function applySettingsPatch(store: Store, patch: Partial<Settings>): void {
     ...store.settings,
     ...patch,
     reader: { ...store.settings.reader, ...(patch.reader ?? {}) },
-    sync: { ...store.settings.sync, ...(patch.sync ?? {}) },
     appearance: { ...store.settings.appearance, ...(patch.appearance ?? {}) }
   }
   next.dataDir = store.dataDir
@@ -66,9 +65,22 @@ export interface LanBridge {
   url: () => string
   lastPush: () => { at: number; progress: number; sessions: number }
   transfer: () => { name: string; sent: number; total: number } | null
+  /** 手机推来的记录与电脑端冲突、还没裁决的那些 */
+  pendingConflicts?: () => LanPendingConflict[]
+  /** 应用裁决：选择合并并落盘 */
+  resolveConflicts?: (choices: Record<string, 'desktop' | 'phone'>) => Promise<{ merged: number }>
 }
 
-export function registerIpc(store: Store, lan: LanBridge): void {
+/** 局域网状态查询的兜底实现：纯 Node 下跑自检（不起服务）时用 */
+const NO_LAN: LanBridge = {
+  url: () => '',
+  lastPush: () => ({ at: 0, progress: 0, sessions: 0 }),
+  transfer: () => null,
+  pendingConflicts: () => [],
+  resolveConflicts: async () => ({ merged: 0 })
+}
+
+export function registerIpc(store: Store, lan: LanBridge = NO_LAN): void {
   const handle = (channel: string, fn: (...args: any[]) => unknown): void => {
     ipcMain.handle(channel, async (_event, ...args: any[]) => fn(...args))
   }
@@ -76,6 +88,15 @@ export function registerIpc(store: Store, lan: LanBridge): void {
   handle('lan:reloadRecords', async () => {
     await store.reloadRecords()
     return true
+  })
+
+  handle('lan:pendingConflicts', () => lan.pendingConflicts?.() ?? [])
+
+  /** 用户裁决完：合并落盘后把记录重新读进内存，否则内存里的旧值会在下次保存时覆盖回去 */
+  handle('lan:resolveConflicts', async (choices: Record<string, 'desktop' | 'phone'>) => {
+    const result = (await lan.resolveConflicts?.(choices ?? {})) ?? { merged: 0 }
+    await store.reloadRecords()
+    return result
   })
 
   handle('lan:openBooksDir', () => shell.openPath(store.booksDir))
@@ -275,21 +296,6 @@ export function registerIpc(store: Store, lan: LanBridge): void {
   /* ---------------- 统计 ---------------- */
 
   handle('stats:get', (): StatsPayload => computeStats(store))
-
-  /* ---------------- 书库 ---------------- */
-
-  /** 批量标记「同步到云端」：省得一本一本点（不影响云端已有的文件） */
-  handle('library:markSyncUpload', (value: boolean) => {
-    for (const book of store.books) book.syncUpload = Boolean(value)
-    store.save('library', true)
-    return store.books
-  })
-
-
-
-  /* ---------------- 网盘 / 云端同步 ---------------- */
-
-  /** 退出阅读时顺手同步（主进程延迟一点点再跑，不阻塞界面） */
 
   /* ---------------- 系统 ---------------- */
 
