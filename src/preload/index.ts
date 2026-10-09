@@ -4,11 +4,10 @@ import type {
   Book,
   BookOpenPayload,
   ChapterPayload,
-  ConflictItem,
+  LanConflictItem,
   Progress,
   Settings,
-  StatsPayload,
-  SyncState
+  StatsPayload
 } from '../shared/types'
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
@@ -61,8 +60,6 @@ const api = {
     clearRecords: (id: string) => invoke<Book[]>('library:clearRecords', id),
     clearAllRecords: () => invoke<Book[]>('library:clearAllRecords'),
     update: (id: string, patch: Partial<Book>) => invoke<Book[]>('library:update', id, patch),
-    /** 批量标记「同步到云端」 */
-    markSyncUpload: (value: boolean) => invoke<Book[]>('library:markSyncUpload', value),
     reveal: (id: string) => invoke<boolean>('library:reveal', id),
     /** 后台补齐书籍信息后主进程会通知刷新 */
     onChanged: (callback: () => void) => {
@@ -82,12 +79,25 @@ const api = {
   lan: {
     reloadRecords: () => invoke<boolean>('lan:reloadRecords'),
     openBooksDir: () => invoke<string>('lan:openBooksDir'),
+    /** 手机推来的记录里，与电脑端冲突、还没裁决的那些 */
+    pendingConflicts: () => invoke<LanConflictItem[]>('lan:pendingConflicts'),
+    /** 应用裁决：choice 是 bookId → 采用哪一边 */
+    resolveConflicts: (choices: Record<string, 'desktop' | 'phone'>) =>
+      invoke<{ merged: number }>('lan:resolveConflicts', choices),
     /** 主进程收到手机推来的记录后会通知刷新 */
     onChanged: (callback: () => void) => {
       const listener = (): void => callback()
-      ipcRenderer.on('sync:changed', listener)
+      ipcRenderer.on('lan:changed', listener)
       return () => {
-        ipcRenderer.removeListener('sync:changed', listener)
+        ipcRenderer.removeListener('lan:changed', listener)
+      }
+    },
+    /** 有新的冲突等待裁决 */
+    onConflict: (callback: () => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on('lan:conflict', listener)
+      return () => {
+        ipcRenderer.removeListener('lan:conflict', listener)
       }
     }
   },

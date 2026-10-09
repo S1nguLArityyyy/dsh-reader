@@ -4,10 +4,9 @@ import type {
   AppInfo,
   Book,
   ChapterRef,
-  ConflictItem,
+  LanConflictItem,
   Settings,
   StatsPayload,
-  SyncState,
   TocEntry
 } from '@shared/types'
 
@@ -45,41 +44,6 @@ const emptyReader: ReaderState = {
   error: null,
   scrollRatio: 0
 }
-
-const emptySync: SyncState = {
-  phase: 'idle',
-  loggedIn: false,
-  account: null,
-  lastSyncAt: null,
-  tasks: [],
-  transferred: 0,
-  total: 0,
-  message: null
-}
-
-/** 设计阶段用于预览冲突弹窗的示例数据（真实数据由同步引擎在 M5 提供） */
-const PREVIEW_CONFLICTS: ConflictItem[] = [
-  {
-    bookId: 'preview-1',
-    title: '败犬女主太多了！09',
-    localPercent: 0.62,
-    localAt: Date.now() - 1000 * 60 * 42,
-    localDevice: 'DESKTOP-PC',
-    cloudPercent: 0.35,
-    cloudAt: Date.now() - 1000 * 60 * 60 * 6,
-    cloudDevice: 'Phone'
-  },
-  {
-    bookId: 'preview-2',
-    title: '雪国',
-    localPercent: 0.18,
-    localAt: Date.now() - 1000 * 60 * 60 * 30,
-    localDevice: 'DESKTOP-PC',
-    cloudPercent: 0.74,
-    cloudAt: Date.now() - 1000 * 60 * 25,
-    cloudDevice: 'Phone'
-  }
-]
 
 function errorText(err: unknown): string {
   if (err instanceof Error) return err.message
@@ -128,15 +92,16 @@ interface AppStore {
   books: Book[]
   settings: Settings | null
   stats: StatsPayload | null
-  sync: SyncState
-  conflicts: ConflictItem[]
-  conflictPreview: boolean
-  syncModalOpen: boolean
-  conflictModalOpen: boolean
   toasts: ToastItem[]
   reader: ReaderState
   /** 书籍详情弹窗 */
   detailBookId: string | null
+  /** 手机推来的记录与电脑端冲突、等待裁决的那些 */
+  lanConflicts: LanConflictItem[]
+  /** 裁决弹窗是否打开 */
+  lanConflictOpen: boolean
+  /** 用户当前的选择：bookId → 采用哪一边 */
+  lanChoices: Record<string, 'desktop' | 'phone'>
   /** 书库筛选：null=全部，'__singles__'=单册，其它=系列名 */
   seriesFilter: string | null
   /** 侧边栏系列二级菜单是否展开 */
@@ -153,6 +118,12 @@ interface AppStore {
   dismissToast: (id: number) => void
   openDetail: (bookId: string) => void
   closeDetail: () => void
+  /** 拉取待裁决的冲突（有则自动弹窗） */
+  loadLanConflicts: () => Promise<void>
+  setLanConflictOpen: (open: boolean) => void
+  chooseLanConflict: (bookId: string, choice: 'desktop' | 'phone') => void
+  chooseAllLanConflicts: (choice: 'desktop' | 'phone') => void
+  resolveLanConflicts: () => Promise<void>
   setSeriesFilter: (key: string | null) => void
   toggleSeries: () => void
   setSearch: (value: string) => void
@@ -166,7 +137,6 @@ interface AppStore {
 
   loadBooks: () => Promise<void>
   loadStats: () => Promise<void>
-  loadSync: () => Promise<void>
   refreshAll: () => Promise<void>
 
   importDialog: () => Promise<void>
@@ -175,22 +145,10 @@ interface AppStore {
   removeBook: (id: string, deleteFile: boolean) => Promise<void>
   updateBook: (id: string, patch: Partial<Book>) => Promise<void>
   saveSettings: (patch: Partial<Settings>) => Promise<void>
-  markAllSyncUpload: (value: boolean) => Promise<void>
 
   openReader: (bookId: string) => Promise<void>
   closeReader: () => void
   goToChapter: (index: number) => Promise<void>
-
-  setSyncModal: (open: boolean) => void
-  setConflictModal: (open: boolean) => void
-  runSync: () => Promise<void>
-  cancelSync: () => Promise<void>
-  connectSync: () => Promise<void>
-  configureWebdav: (payload: { url: string; username: string; password?: string }) => Promise<void>
-  logoutSync: () => Promise<void>
-  downloadAll: () => Promise<void>
-  resolveConflicts: (choice: 'local' | 'cloud') => Promise<void>
-  previewConflicts: () => void
 }
 
 let toastSeq = 0
@@ -202,14 +160,12 @@ export const useApp = create<AppStore>((set, get) => ({
   books: [],
   settings: null,
   stats: null,
-  sync: emptySync,
-  conflicts: [],
-  conflictPreview: false,
-  syncModalOpen: false,
-  conflictModalOpen: false,
   toasts: [],
   reader: { ...emptyReader },
   detailBookId: null,
+  lanConflicts: [],
+  lanConflictOpen: false,
+  lanChoices: {},
   seriesFilter: null,
   seriesOpen: true,
   search: '',
@@ -223,12 +179,11 @@ export const useApp = create<AppStore>((set, get) => ({
       const modal = params.get('modal') ?? ''
       const bookParam = params.get('book') ?? ''
 
-      const [info, settings, books, stats, sync] = await Promise.all([
+      const [info, settings, books, stats] = await Promise.all([
         window.api.app.info(),
         window.api.settings.get(),
         window.api.library.list(),
-        window.api.stats.get(),
-        Promise.resolve(emptySync)
+        window.api.stats.get()
       ])
 
       set({
@@ -236,7 +191,6 @@ export const useApp = create<AppStore>((set, get) => ({
         settings,
         books: [...books].sort((a, b) => (b.lastOpenedAt ?? b.addedAt) - (a.lastOpenedAt ?? a.addedAt)),
         stats,
-        sync,
         route: routeParam,
         ready: true
       })
@@ -248,8 +202,15 @@ export const useApp = create<AppStore>((set, get) => ({
         })
       }
 
-      if (modal === 'sync') set({ syncModalOpen: true })
-      if (modal === 'conflict') get().previewConflicts()
+      // 手机推来的记录与电脑端冲突：主进程整批暂缓并通知，这里弹窗请用户裁决
+      if (typeof window.api.lan?.onConflict === 'function') {
+        window.api.lan.onConflict(() => {
+          void get().loadLanConflicts()
+        })
+      }
+      // 启动时可能就有上次没裁决完的
+      void get().loadLanConflicts()
+
       if (modal === 'detail' && books.length > 0) set({ detailBookId: books[0].id })
 
       // 便于深链 / 截图的状态参数
@@ -368,16 +329,6 @@ export const useApp = create<AppStore>((set, get) => ({
     get().toast('success', name ? `已归入合集「${name}」` : '已移出合集')
   },
 
-  async markAllSyncUpload(value) {
-    try {
-      await window.api.library.markSyncUpload(value)
-      await get().loadBooks()
-      get().toast('info', value ? '已把全部书籍标为「同步到云端」' : '已取消全部书籍的云端同步标记')
-    } catch (err) {
-      get().toast('error', errorText(err))
-    }
-  },
-
   async loadBooks() {
     const books = await window.api.library.list()
     set({ books: [...books].sort((a, b) => (b.lastOpenedAt ?? b.addedAt) - (a.lastOpenedAt ?? a.addedAt)) })
@@ -387,14 +338,8 @@ export const useApp = create<AppStore>((set, get) => ({
     set({ stats: await window.api.stats.get() })
   },
 
-  async loadSync() {
-    const [sync, conflicts] = await Promise.all([Promise.resolve(emptySync), []])
-    const preview = get().conflictPreview
-    set({ sync, conflicts: conflicts.length > 0 ? conflicts : preview ? PREVIEW_CONFLICTS : [] })
-  },
-
   async refreshAll() {
-    await Promise.all([get().loadBooks(), get().loadStats(), get().loadSync()])
+    await Promise.all([get().loadBooks(), get().loadStats()])
   },
 
   async importDialog() {
@@ -493,7 +438,6 @@ export const useApp = create<AppStore>((set, get) => ({
   closeReader() {
     set({ route: 'library', reader: { ...emptyReader } })
     void get().refreshAll()
-    // 合上书顺手同步一次（主进程会稍等片刻，让卸载时刷下的最后一条进度先落到本地）
   },
 
   async goToChapter(index) {
@@ -519,107 +463,47 @@ export const useApp = create<AppStore>((set, get) => ({
     }
   },
 
-  setSyncModal(open) {
-    set({ syncModalOpen: open })
-    if (open) void get().loadSync()
-  },
-
-  setConflictModal(open) {
-    set({ conflictModalOpen: open })
-    if (open) void get().loadSync()
-  },
-
-  async runSync() {
+  async loadLanConflicts() {
     try {
-      const sync = await emptySync
-      set({ sync })
-      // 进度 / 今日阅读 / 统计都可能变了，立刻刷新（自动同步那条路走 sync:changed 事件）
-      await get().loadBooks()
-      await get().loadStats()
-      if (sync.phase === 'conflict') {
-        await get().loadSync()
-        set({ conflictModalOpen: true, conflictPreview: false })
-        get().toast('info', sync.message ?? '发现阅读进度冲突，请选择保留哪一边')
+      const items = await window.api.lan.pendingConflicts()
+      if (items.length === 0) {
+        // 已经没有待裁决的了（可能刚在别处处理过）
+        set({ lanConflicts: [], lanConflictOpen: false, lanChoices: {} })
         return
       }
-      if (sync.message) get().toast(sync.phase === 'error' ? 'error' : 'info', sync.message)
-    } catch (err) {
-      get().toast('error', `同步失败：${errorText(err)}`)
-    }
-  },
-
-  async cancelSync() {
-    const sync = await emptySync
-    set({ sync })
-  },
-
-  async connectSync() {
-    try {
-      const sync = await emptySync
-      // 连接时主进程会把选中的目录写进设置，这里跟着刷新一次
-      const settings = await window.api.settings.get()
-      set({ sync, settings })
-      await get().loadBooks()
-      await get().loadStats()
-      if (sync.phase === 'conflict') {
-        await get().loadSync()
-        set({ conflictModalOpen: true, conflictPreview: false })
-        get().toast('info', sync.message ?? '发现阅读进度冲突，请选择保留哪一边')
-        return
+      const choices: Record<string, 'desktop' | 'phone'> = {}
+      for (const item of items) {
+        // 默认值只作初值，用户可以逐本改
+        choices[item.bookId] = item.phoneAt > item.desktopAt ? 'phone' : 'desktop'
       }
-      if (sync.message) get().toast('info', sync.message)
-    } catch (err) {
-      get().toast('error', errorText(err))
+      set({ lanConflicts: items, lanChoices: choices, lanConflictOpen: true })
+    } catch {
+      /* 取不到就当没有冲突 */
     }
   },
 
-  async downloadAll() {
+  setLanConflictOpen(open) {
+    set({ lanConflictOpen: open })
+  },
+
+  chooseLanConflict(bookId, choice) {
+    set({ lanChoices: { ...get().lanChoices, [bookId]: choice } })
+  },
+
+  chooseAllLanConflicts(choice) {
+    const choices: Record<string, 'desktop' | 'phone'> = {}
+    for (const item of get().lanConflicts) choices[item.bookId] = choice
+    set({ lanChoices: choices })
+  },
+
+  async resolveLanConflicts() {
     try {
-      const sync = await emptySync
-      set({ sync })
-      await get().loadBooks()
-      await get().loadStats()
-      if (sync.message) get().toast('info', sync.message)
+      const result = await window.api.lan.resolveConflicts(get().lanChoices)
+      set({ lanConflicts: [], lanConflictOpen: false, lanChoices: {} })
+      await get().refreshAll()
+      get().toast('success', result.merged > 0 ? `已按你的选择合并 ${result.merged} 本` : '已按你的选择处理')
     } catch (err) {
-      get().toast('error', errorText(err))
+      get().toast('error', `合并失败：${errorText(err)}`)
     }
-  },
-
-  async configureWebdav(payload) {
-    try {
-      const sync = await emptySync
-      // 地址与账号落在设置里；应用密码只在主进程，不回传
-      const settings = await window.api.settings.get()
-      set({ sync, settings })
-      await get().loadBooks()
-      await get().loadStats()
-      if (sync.message) get().toast(sync.phase === 'error' ? 'error' : 'info', sync.message)
-    } catch (err) {
-      get().toast('error', errorText(err))
-    }
-  },
-
-  async logoutSync() {
-    try {
-      const sync = await emptySync
-      set({ sync })
-      if (sync.message) get().toast('info', sync.message)
-    } catch (err) {
-      get().toast('error', errorText(err))
-    }
-  },
-
-  async resolveConflicts(choice) {
-    try {
-      const sync = await emptySync
-      set({ sync, conflictModalOpen: false, conflicts: [], conflictPreview: false })
-      get().toast('success', choice === 'local' ? '已选择保留本地版本' : '已选择使用云端版本')
-    } catch (err) {
-      get().toast('error', errorText(err))
-    }
-  },
-
-  previewConflicts() {
-    set({ conflicts: PREVIEW_CONFLICTS, conflictPreview: true, conflictModalOpen: true })
   }
 }))

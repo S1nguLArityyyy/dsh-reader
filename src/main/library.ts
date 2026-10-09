@@ -82,8 +82,7 @@ export async function enrollEpubFile(
     manualSeries: null,
     addedAt: Date.now(),
     lastOpenedAt: null,
-    hidden: false,
-    syncUpload: false
+    hidden: false
   }
 
   // 导入时顺便解压并统计每章字数：既拿到全书进度所需的分母，也让首次打开更快

@@ -40,8 +40,6 @@ export interface Book {
   addedAt: number
   lastOpenedAt: number | null
   hidden: boolean
-  /** 是否将该书文件上传到网盘（按需上传策略，默认 false） */
-  syncUpload: boolean
 }
 
 /** 单本书的阅读进度（未来与手机端交换的最小单元） */
@@ -84,30 +82,6 @@ export interface ReaderSettings {
   mode: 'scroll' | 'paged'
 }
 
-export interface SyncSettings {
-  /**
-   * 云端类型：
-   *  - local：本机目录当云端（用于测试与单机兜底）
-   *  - webdav：标准协议，坚果云等（应用密码走 HTTP Basic）
-   *  - baidu：应用内登录百度网盘（路线已定，尚未接入）
-   */
-  /** provider = local 时用作「云端」根目录的本机路径；未选择为 null */
-  localCloudDir: string | null
-  /** provider = webdav 时的连接信息（应用密码单独加密存放，不在这里） */
-  /** 自动同步开关 */
-  auto: boolean
-  /** 退出阅读（合上书）时立刻同步一次：进度与阅读时长 */
-  onReaderClose: boolean
-  intervalMinutes: number
-  /** 网盘中的同步文件夹 */
-  remoteDir: string
-  conflictPolicy: 'ask' | 'local' | 'cloud'
-  /** 书籍本体同步总开关（默认关；打开后按每本书的 Book.syncUpload 勾选上传） */
-  uploadBooks: boolean
-  /** 云端出现本机没有的书时自动下载（默认关，避免悄悄吃流量） */
-  autoDownloadBooks: boolean
-}
-
 export interface AppearanceSettings {
   /** 主题色（#rrggbb） */
   accent: string
@@ -128,7 +102,6 @@ export interface Settings {
   /** 每日阅读目标（分钟），用于「今日阅读进度」 */
   dailyGoalMinutes: number
   reader: ReaderSettings
-  sync: SyncSettings
   appearance: AppearanceSettings
 }
 
@@ -191,39 +164,18 @@ export interface StatsPayload {
   todayRemainingSeconds: number | null
 }
 
-export type SyncPhase = 'idle' | 'checking' | 'running' | 'done' | 'error' | 'conflict'
-
-export interface SyncTask {
-  id: string
-  kind: 'progress' | 'book' | 'stats'
+/** 手机推来的进度与电脑端冲突、等待用户裁决的一项 */
+export interface LanConflictItem {
   bookId: string
   title: string
-  direction: 'up' | 'down'
-  total: number
-  done: number
-  status: 'pending' | 'active' | 'done' | 'error' | 'skipped'
-}
-
-export interface SyncState {
-  phase: SyncPhase
-  loggedIn: boolean
-  account: string | null
-  lastSyncAt: number | null
-  tasks: SyncTask[]
-  transferred: number
-  total: number
-  message: string | null
-}
-
-export interface ConflictItem {
-  bookId: string
-  title: string
-  localPercent: number
-  localAt: number
-  localDevice: string
-  cloudPercent: number
-  cloudAt: number
-  cloudDevice: string
+  /** 手机推来的那一份 */
+  phonePercent: number
+  phoneAt: number
+  phoneChapterTitle: string
+  /** 电脑端当前的这一份 */
+  desktopPercent: number
+  desktopAt: number
+  desktopChapterTitle: string
 }
 
 export interface AppInfo {

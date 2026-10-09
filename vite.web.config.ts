@@ -4,7 +4,10 @@ import react from '@vitejs/plugin-react'
 
 /**
  * 只跑渲染进程的 Vite 配置：用于在浏览器里预览界面（浏览器预览模式）。
- * 后端数据由 src/renderer/src/lib/mock-api.ts 提供，不落盘。
+ *
+ * ⚠️ 注意：渲染层现在只从 preload 注入的 window.api 取数据，没有任何浏览器兜底实现，
+ * 所以在浏览器里打开会停在初始化（window.api 为 undefined）。这条链路仅作开发期脚手架保留，
+ * 要真正可用需要另写一份内存版 api。
  */
 export default defineConfig({
   root: resolve('src/renderer'),

@@ -51,10 +51,6 @@ export class Store {
     return join(this.dataDir, 'cache')
   }
 
-  get syncDir(): string {
-    return join(this.dataDir, 'sync')
-  }
-
   private defaultSettings(): Settings {
     return {
       dataDir: this.dataDir,
@@ -71,16 +67,6 @@ export class Store {
         padding: 36,
         theme: 'paper',
         mode: 'scroll'
-      },
-      sync: {
-        localCloudDir: null,
-        auto: false,
-        onReaderClose: true,
-        intervalMinutes: 10,
-        remoteDir: '/DshReader',
-        conflictPolicy: 'ask',
-        uploadBooks: false,
-        autoDownloadBooks: false
       },
       appearance: {
         accent: '#3b6fd4',
@@ -101,7 +87,6 @@ export class Store {
     await this.setupBooksDir()
     await mkdir(this.coversDir, { recursive: true })
     await mkdir(this.cacheDir, { recursive: true })
-    await mkdir(this.syncDir, { recursive: true })
 
     const defaults = this.defaultSettings()
     const saved = await this.readJson<Partial<Settings>>('settings', {})
@@ -110,10 +95,6 @@ export class Store {
       ...saved,
       dataDir: this.dataDir,
       reader: { ...defaults.reader, ...(saved.reader ?? {}) },
-      sync: {
-        ...defaults.sync,
-        ...(saved.sync ?? {}),
-      },
       appearance: { ...defaults.appearance, ...(saved.appearance ?? {}) }
     }
     this.books = await this.readJson<Book[]>('library', [])
