@@ -205,9 +205,13 @@ export async function removeBook(store: Store, id: string, deleteFile: boolean):
   store.books = store.books.filter((b) => b.id !== id)
   delete store.progress[id]
   store.sessions = store.sessions.filter((s) => s.bookId !== id)
+  store.bookmarks = store.bookmarks.filter((item) => item.bookId !== id)
+  store.annotations = store.annotations.filter((item) => item.bookId !== id)
   store.save('library')
   store.save('progress')
   store.save('sessions')
+  store.save('bookmarks')
+  store.save('annotations')
   if (deleteFile) {
     await rm(book.filePath, { force: true })
     if (book.coverFile) await rm(book.coverFile, { force: true })

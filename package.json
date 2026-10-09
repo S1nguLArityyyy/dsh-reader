@@ -1,7 +1,7 @@
 {
   "name": "dsh-reader",
   "productName": "Dsh Reader",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Dsh Reader - 本地电子书阅读器（EPUB）",
   "main": "./out/main/index.js",
@@ -20,8 +20,14 @@
     "build:web": "vite build --config vite.web.config.ts",
     "preview:web": "node scripts/serve-web.mjs",
     "check:epub": "node scripts/epub-check.mjs",
+    "check:bookmarks": "node scripts/bookmarks-check.mjs",
+    "check:anchor": "node scripts/bookmark-anchor-check.mjs",
+    "check:annotations": "node scripts/annotations-check.mjs",
+    "check:annotations-ui": "node scripts/annotations-ui-check.mjs",
+    "check:display": "node scripts/annotations-display-check.mjs",
+    "check:ui": "node scripts/bookmark-ui-check.mjs",
     "check:backend": "node scripts/backend-check.mjs",
-    "check": "npm run typecheck && npm run check:epub && npm run check:backend",
+    "check": "npm run typecheck && npm run check:epub && npm run check:bookmarks && npm run check:anchor && npm run check:annotations && npm run check:annotations-ui && npm run check:display && npm run check:ui && npm run check:backend",
     "sync:demo": "node scripts/sync-demo.mjs",
     "shot": "node scripts/screenshot.mjs",
     "shot:web": "node scripts/shot-web.mjs",
@@ -43,6 +49,7 @@
     "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
     "electron-vite": "^2.3.0",
+    "jsdom": "^30.1.2",
     "typescript": "^5.7.2",
     "vite": "^5.4.11"
   }

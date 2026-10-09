@@ -1,8 +1,13 @@
 import { create } from 'zustand'
 import { percentByPosition } from '@shared/progress'
+import { activeBookmarks, findBookmarkAt } from '@shared/bookmarks'
+import type { BookmarkInput } from '@shared/bookmarks'
+import type { AnnotationInput, AnnotationPatch } from '@shared/types'
 import type {
+  Annotation,
   AppInfo,
   Book,
+  Bookmark,
   ChapterRef,
   LanConflictItem,
   Settings,
@@ -10,12 +15,32 @@ import type {
   TocEntry
 } from '@shared/types'
 
-export type Route = 'library' | 'stats' | 'settings' | 'reader'
+export type Route = 'library' | 'stats' | 'bookmarks' | 'records' | 'settings' | 'reader'
 
 export interface ToastItem {
   id: number
   kind: 'info' | 'success' | 'error'
   text: string
+  /** 可选的操作按钮（例如删除书签后的「撤销」） */
+  action?: { label: string; run: () => void }
+}
+
+/** 从书签跳回阅读器时的目标位置 */
+export interface BookmarkAnchor {
+  chapterIndex: number
+  scrollRatio: number
+  excerpt?: string
+}
+
+/** 从阅读记录跳回阅读器时，要定位并选中的那条划线 */
+export interface AnnotationAnchor {
+  chapterIndex: number
+  blockIndex: number
+  tokenIndex: number
+  start: number
+  endBlockIndex: number
+  endTokenIndex: number
+  end: number
 }
 
 export interface ReaderState {
@@ -30,6 +55,19 @@ export interface ReaderState {
   error: string | null
   /** 打开时恢复用的滚动比例 */
   scrollRatio: number
+  /** 从书签跳进来时的目标位置（用一次就清掉） */
+  bookmarkAnchor: BookmarkAnchor | null
+  /** 从阅读记录跳进来时要定位的那条划线（用一次就清掉） */
+  annotationAnchor: AnnotationAnchor | null
+  /**
+   * 最近一次换章的方向：
+   *  - forward：向后翻过章末（落在新章开头）
+   *  - backward：向前翻过章首（该章没有记录时落到末尾）
+   *  - resume：回到该章上次读到的位置
+   */
+  jumpDir?: 'forward' | 'backward' | 'resume'
+  /** jumpDir === 'resume' 时要恢复到的章内位置（0~1） */
+  restoreRatio?: number
 }
 
 const emptyReader: ReaderState = {
@@ -42,7 +80,10 @@ const emptyReader: ReaderState = {
   html: '',
   loading: false,
   error: null,
-  scrollRatio: 0
+  scrollRatio: 0,
+  bookmarkAnchor: null,
+  annotationAnchor: null,
+  jumpDir: 'forward'
 }
 
 function errorText(err: unknown): string {
@@ -112,9 +153,23 @@ interface AppStore {
   selectMode: boolean
   selected: string[]
 
+  /** 书签：全部（未删除的）与上限提示用的剩余额度 */
+  bookmarks: Bookmark[]
+  bookmarkRemaining: number
+  /** 书签页当前选中的书（右栏只显示它的书签） */
+  bookmarkBookId: string | null
+  bookmarkSort: 'recent' | 'chapter'
+
+  /** 划线 / 笔记：全部（未删除的） */
+  annotations: Annotation[]
+  /** 阅读记录页当前选中的书 */
+  recordBookId: string | null
+  /** 阅读记录页筛选：全部 / 只看划线 / 只看笔记 */
+  recordFilter: 'all' | 'highlight' | 'note'
+
   init: () => Promise<void>
   go: (route: Route) => void
-  toast: (kind: ToastItem['kind'], text: string) => void
+  toast: (kind: ToastItem['kind'], text: string, action?: ToastItem['action']) => void
   dismissToast: (id: number) => void
   openDetail: (bookId: string) => void
   closeDetail: () => void
@@ -146,9 +201,35 @@ interface AppStore {
   updateBook: (id: string, patch: Partial<Book>) => Promise<void>
   saveSettings: (patch: Partial<Settings>) => Promise<void>
 
-  openReader: (bookId: string) => Promise<void>
+  openReader: (bookId: string, anchor?: BookmarkAnchor) => Promise<void>
   closeReader: () => void
-  goToChapter: (index: number) => Promise<void>
+  goToChapter: (
+    index: number,
+    dir?: 'forward' | 'backward',
+    resume?: { positions?: Record<number, number> }
+  ) => Promise<void>
+
+  /** 书签 */
+  loadBookmarks: () => Promise<void>
+  refreshBookmarkRemaining: (bookId: string) => Promise<void>
+  setBookmarkBook: (bookId: string | null) => void
+  setBookmarkSort: (sort: 'recent' | 'chapter') => void
+  addBookmark: (input: BookmarkInput) => Promise<Bookmark | null>
+  updateBookmark: (id: string, patch: { note?: string; scrollRatio?: number; excerpt?: string }) => Promise<void>
+  removeBookmark: (id: string) => Promise<void>
+
+  /** 划线 / 笔记 */
+  loadAnnotations: () => Promise<void>
+  setRecordBook: (bookId: string | null) => void
+  setRecordFilter: (filter: 'all' | 'highlight' | 'note') => void
+  annotationsOf: (bookId: string) => Annotation[]
+  addAnnotation: (input: AnnotationInput) => Promise<Annotation | null>
+  updateAnnotation: (id: string, patch: AnnotationPatch) => Promise<void>
+  removeAnnotation: (id: string) => Promise<void>
+  /** 打开某条标注所在的章节并定位（阅读记录页跳转用） */
+  openAnnotation: (annotation: Annotation) => Promise<void>
+  /** 标注变化后重新取当前章 HTML（主进程会把 <mark> 注入进去） */
+  reloadChapter: () => Promise<void>
 }
 
 let toastSeq = 0
@@ -171,6 +252,13 @@ export const useApp = create<AppStore>((set, get) => ({
   search: '',
   selectMode: false,
   selected: [],
+  bookmarks: [],
+  bookmarkRemaining: 99,
+  bookmarkBookId: null,
+  bookmarkSort: 'recent',
+  annotations: [],
+  recordBookId: null,
+  recordFilter: 'all',
 
   async init() {
     try {
@@ -179,11 +267,13 @@ export const useApp = create<AppStore>((set, get) => ({
       const modal = params.get('modal') ?? ''
       const bookParam = params.get('book') ?? ''
 
-      const [info, settings, books, stats] = await Promise.all([
+      const [info, settings, books, stats, bookmarks, annotations] = await Promise.all([
         window.api.app.info(),
         window.api.settings.get(),
         window.api.library.list(),
-        window.api.stats.get()
+        window.api.stats.get(),
+        window.api.bookmarks.list(),
+        window.api.annotations.list()
       ])
 
       set({
@@ -191,6 +281,8 @@ export const useApp = create<AppStore>((set, get) => ({
         settings,
         books: [...books].sort((a, b) => (b.lastOpenedAt ?? b.addedAt) - (a.lastOpenedAt ?? a.addedAt)),
         stats,
+        bookmarks,
+        annotations,
         route: routeParam,
         ready: true
       })
@@ -244,11 +336,11 @@ export const useApp = create<AppStore>((set, get) => ({
     set({ route })
   },
 
-  toast(kind, text) {
+  toast(kind, text, action) {
     toastSeq += 1
     const id = toastSeq
-    set({ toasts: [...get().toasts, { id, kind, text }] })
-    window.setTimeout(() => get().dismissToast(id), 4200)
+    set({ toasts: [...get().toasts, { id, kind, text, action }] })
+    window.setTimeout(() => get().dismissToast(id), action ? 8000 : 4200)
   },
 
   dismissToast(id) {
@@ -408,23 +500,29 @@ export const useApp = create<AppStore>((set, get) => ({
     }
   },
 
-  async openReader(bookId) {
-    set({ route: 'reader', reader: { ...emptyReader, bookId, loading: true } })
+  async openReader(bookId, anchor) {
+    set({ route: 'reader', reader: { ...emptyReader, bookId, loading: true, bookmarkAnchor: anchor ?? null } })
     try {
       const payload = await window.api.reader.open(bookId)
-      // 没有历史进度时，跳过封面/制作页，从正文第一项开始
-      const startIndex = payload.progress?.chapterIndex ?? pickStartChapter(payload)
+      // 从书签跳进来：直接去书签所在的那一章（位置由 ReaderPage 按 scrollRatio 恢复）
+      // 否则：没有历史进度时跳过封面/制作页，从正文第一项开始
+      const startIndex = anchor
+        ? Math.max(0, Math.min(payload.chapters.length - 1, anchor.chapterIndex))
+        : (payload.progress?.chapterIndex ?? pickStartChapter(payload))
       set({
         reader: {
           bookId,
           book: payload.book,
           toc: payload.toc,
           chapters: payload.chapters,
-          chapterIndex: startIndex,          chapterLabel: payload.chapters[startIndex]?.label ?? '',
+          chapterIndex: startIndex,
+          chapterLabel: payload.chapters[startIndex]?.label ?? '',
           html: '',
           loading: true,
           error: null,
-          scrollRatio: payload.progress?.scrollRatio ?? 0
+          scrollRatio: anchor ? anchor.scrollRatio : (payload.progress?.scrollRatio ?? 0),
+          bookmarkAnchor: anchor ?? null,
+          annotationAnchor: null
         }
       })
       await get().goToChapter(startIndex)
@@ -440,11 +538,23 @@ export const useApp = create<AppStore>((set, get) => ({
     void get().refreshAll()
   },
 
-  async goToChapter(index) {
+  async goToChapter(index, dir, resume) {
     const { reader } = get()
     if (!reader.bookId) return
     const target = Math.max(0, Math.min(reader.chapters.length - 1, index))
-    set({ reader: { ...get().reader, loading: true, chapterIndex: target } })
+    // 记录换章方向：阅读器据此决定新章停在开头（向后）还是回到上次位置（向前）
+    const jumpDir = dir ?? (target > reader.chapterIndex ? 'forward' : target < reader.chapterIndex ? 'backward' : reader.jumpDir)
+    // 向前翻回上一章：若阅读器记过那一章读到哪，就回到那个位置；没记过才落到章末
+    const restored = jumpDir === 'backward' ? resume?.positions?.[target] : undefined
+    set({
+      reader: {
+        ...get().reader,
+        loading: true,
+        chapterIndex: target,
+        jumpDir: restored !== undefined ? 'resume' : jumpDir,
+        restoreRatio: restored
+      }
+    })
     try {
       const chapter = await window.api.reader.chapter(reader.bookId, target)
       set({
@@ -461,6 +571,184 @@ export const useApp = create<AppStore>((set, get) => ({
       set({ reader: { ...get().reader, loading: false, error: errorText(err) } })
       get().toast('error', `章节加载失败：${errorText(err)}`)
     }
+  },
+
+  /* ---------------- 书签 ---------------- */
+
+  async loadBookmarks() {
+    const bookmarks = await window.api.bookmarks.list()
+    set({ bookmarks })
+  },
+
+  async refreshBookmarkRemaining(bookId) {
+    try {
+      set({ bookmarkRemaining: await window.api.bookmarks.remaining(bookId) })
+    } catch {
+      set({ bookmarkRemaining: 0 })
+    }
+  },
+
+  setBookmarkBook(bookId) {
+    set({ bookmarkBookId: bookId })
+  },
+
+  setBookmarkSort(sort) {
+    set({ bookmarkSort: sort })
+  },
+
+  async addBookmark(input) {
+    try {
+      const created = await window.api.bookmarks.add(input)
+      await get().loadBookmarks()
+      await get().refreshBookmarkRemaining(input.bookId)
+      if (!created) {
+        const duplicate = findBookmarkAt(activeBookmarks(get().bookmarks), input.bookId, input)
+        get().toast('error', duplicate ? '这个位置已经有书签了' : '这本书的书签已达 99 条上限，先删掉一些再加')
+      }
+      return created
+    } catch (err) {
+      get().toast('error', `加书签失败：${errorText(err)}`)
+      return null
+    }
+  },
+
+  async updateBookmark(id, patch) {
+    try {
+      await window.api.bookmarks.update(id, patch)
+      await get().loadBookmarks()
+    } catch (err) {
+      get().toast('error', `书签保存失败：${errorText(err)}`)
+    }
+  },
+
+  async removeBookmark(id) {
+    const target = get().bookmarks.find((item) => item.id === id)
+    try {
+      const removed = await window.api.bookmarks.remove(id)
+      await get().loadBookmarks()
+      if (target) await get().refreshBookmarkRemaining(target.bookId)
+      if (removed) {
+        get().toast('success', '已删除书签', {
+          label: '撤销',
+          run: () => {
+            void (async () => {
+              const restored = await window.api.bookmarks.restore(id)
+              await get().loadBookmarks()
+              await get().refreshBookmarkRemaining(removed.bookId)
+              get().toast(restored ? 'success' : 'error', restored ? '已恢复书签' : '这本书的书签已满，无法恢复')
+            })()
+          }
+        })
+      }
+    } catch (err) {
+      get().toast('error', `删除书签失败：${errorText(err)}`)
+    }
+  },
+
+  /* ---------------- 划线 / 笔记 ---------------- */
+
+  async loadAnnotations() {
+    set({ annotations: await window.api.annotations.list() })
+  },
+
+  /**
+   * 重新取当前章的 HTML。
+   * 主进程会把这一章的划线 / 笔记包成 <mark> 注入，所以每次标注有增删改都要重取，
+   * 否则界面上看不到刚划的那条线。
+   */
+  async reloadChapter() {
+    const { reader } = get()
+    if (!reader.bookId) return
+    try {
+      const chapter = await window.api.reader.chapter(reader.bookId, reader.chapterIndex)
+      const current = get().reader
+      // 期间可能已经换书 / 换章，这种情况就不要用旧结果覆盖
+      if (current.bookId !== reader.bookId || current.chapterIndex !== reader.chapterIndex) return
+      set({ reader: { ...current, chapterIndex: chapter.index, chapterLabel: chapter.label, html: chapter.html } })
+    } catch (err) {
+      get().toast('error', `章节重新载入失败：${errorText(err)}`)
+    }
+  },
+
+  setRecordBook(bookId) {
+    set({ recordBookId: bookId })
+  },
+
+  setRecordFilter(filter) {
+    set({ recordFilter: filter })
+  },
+
+  annotationsOf(bookId) {
+    return get().annotations.filter((item) => item.bookId === bookId && !item.deletedAt)
+  },
+
+  async addAnnotation(input) {
+    try {
+      const created = await window.api.annotations.add(input)
+      await get().loadAnnotations()
+      if (!created) {
+        get().toast('error', '没能保存这条划线：没有选中文字或已达上限')
+      }
+      return created
+    } catch (err) {
+      get().toast('error', `保存划线失败：${errorText(err)}`)
+      return null
+    }
+  },
+
+  async updateAnnotation(id, patch) {
+    try {
+      await window.api.annotations.update(id, patch)
+      await get().loadAnnotations()
+    } catch (err) {
+      get().toast('error', `保存失败：${errorText(err)}`)
+    }
+  },
+
+  async removeAnnotation(id) {
+    try {
+      const removed = await window.api.annotations.remove(id)
+      await get().loadAnnotations()
+      if (removed) {
+        get().toast('success', removed.note ? '已删除笔记' : '已删除划线', {
+          label: '撤销',
+          run: () => {
+            void (async () => {
+              const restored = await window.api.annotations.restore(id)
+              await get().loadAnnotations()
+              get().toast(restored ? 'success' : 'error', restored ? '已恢复' : '恢复失败')
+            })()
+          }
+        })
+      }
+    } catch (err) {
+      get().toast('error', `删除失败：${errorText(err)}`)
+    }
+  },
+
+  async openAnnotation(annotation) {
+    const anchor = {
+      chapterIndex: annotation.chapterIndex,
+      blockIndex: annotation.blockIndex,
+      tokenIndex: annotation.tokenIndex,
+      start: annotation.startOffset,
+      endBlockIndex: annotation.endBlockIndex,
+      endTokenIndex: annotation.endTokenIndex,
+      end: annotation.endOffset
+    }
+    const { reader } = get()
+    // 已经在这本书里：直接切章，位置交给 ReaderPage 按锚点定位
+    if (reader.bookId === annotation.bookId) {
+      set({ route: 'reader', reader: { ...reader, annotationAnchor: anchor } })
+      if (reader.chapterIndex !== annotation.chapterIndex) await get().goToChapter(annotation.chapterIndex)
+      return
+    }
+    await get().openReader(annotation.bookId, {
+      chapterIndex: annotation.chapterIndex,
+      scrollRatio: 0,
+      excerpt: annotation.quote
+    })
+    set({ reader: { ...get().reader, annotationAnchor: anchor } })
   },
 
   async loadLanConflicts() {
@@ -507,3 +795,15 @@ export const useApp = create<AppStore>((set, get) => ({
     }
   }
 }))
+
+/*
+ * 界面自检用的逃生口（scripts/bookmark-ui-check.ts）。
+ * 自检脚本把组件打进同一个 bundle 时，esbuild 会给「从脚本引入的 store」和
+ * 「组件内部引入的 store」各生成一份模块实例，两边状态互不可见；
+ * 打开这个开关后双方都从这里取同一个实例。正式运行不受影响。
+ */
+if (process.env.DSH_UI_CHECK) {
+  const box = globalThis as unknown as { __dshApp?: typeof useApp; __dshAppCount?: number }
+  box.__dshApp = useApp
+  box.__dshAppCount = (box.__dshAppCount ?? 0) + 1
+}

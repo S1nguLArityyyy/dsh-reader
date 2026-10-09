@@ -3,14 +3,17 @@ import { useEffect, useState, useMemo } from 'react'
 import {
   BarChart3,
   BookMarked,
+  Bookmark as BookmarkIcon,
   BookOpen,
   ChevronDown,
+  Highlighter,
   Layers,
   Library,
   Settings as SettingsIcon
 } from 'lucide-react'
 import { useApp } from '../store/app'
 import { groupBooks, SINGLES_KEY } from '../lib/library'
+import { activeBookmarks } from '@shared/bookmarks'
 
 export function Sidebar() {
   const route = useApp((s) => s.route)
@@ -48,6 +51,10 @@ export function Sidebar() {
   const inLibrary = route === 'library' || route === 'reader'
   const groups = useMemo(() => groupBooks(books), [books])
   const visibleGroups = groups.filter((g) => g.books.length > 0)
+  const bookmarks = useApp((s) => s.bookmarks)
+  const bookmarkCount = useMemo(() => activeBookmarks(bookmarks).length, [bookmarks])
+  const annotations = useApp((s) => s.annotations)
+  const annotationCount = useMemo(() => annotations.filter((item) => !item.deletedAt).length, [annotations])
 
   return (
     <aside className="sidebar">
@@ -66,6 +73,16 @@ export function Sidebar() {
         <button className={`nav-item${route === 'stats' ? ' active' : ''}`} onClick={() => go('stats')}>
           <BarChart3 size={18} />
           <span>统计</span>
+        </button>
+        <button className={`nav-item${route === 'bookmarks' ? ' active' : ''}`} onClick={() => go('bookmarks')}>
+          <BookmarkIcon size={18} />
+          <span>书签</span>
+          {bookmarkCount > 0 ? <span className="nav-count">{bookmarkCount}</span> : null}
+        </button>
+        <button className={`nav-item${route === 'records' ? ' active' : ''}`} onClick={() => go('records')}>
+          <Highlighter size={18} />
+          <span>阅读记录</span>
+          {annotationCount > 0 ? <span className="nav-count">{annotationCount}</span> : null}
         </button>
       </nav>
 

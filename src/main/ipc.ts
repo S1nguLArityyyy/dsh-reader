@@ -2,6 +2,9 @@ import { app, dialog, ipcMain, shell } from 'electron'
 import { copyFile, mkdir, readdir, rm } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import type {
+  Annotation,
+  AnnotationInput,
+  AnnotationPatch,
   AppInfo,
   Book,
   Bookmark,
@@ -15,6 +18,7 @@ import type {
 } from '../shared/types'
 import type { BookmarkInput, BookmarkSort } from '../shared/bookmarks'
 import { percentByPosition } from '../shared/progress'
+import { applyAnnotations, annotationsOfChapter } from './annotations'
 import { readChapter, readEpubMeta } from './epub'
 import type { LanPendingConflict } from './lan'
 import { ensureExtracted, flattenToc, importMany, removeBook, scanEpubFiles } from './library'
@@ -190,7 +194,12 @@ export function registerIpc(store: Store, lan: LanBridge = NO_LAN): void {
 
   /* ---------------- 书库 ---------------- */
 
-  handle('library:list', () => store.books)
+  /**
+   * 书库列表。
+   * 「已读完」来自 store.finished（那份数据参与局域网同步），
+   * 合并进来渲染层才知道哪些书是用户手动标记过的。
+   */
+  handle('library:list', () => store.books.map((book) => ({ ...book, finished: Boolean(store.finished[book.id]) })))
 
   handle('library:importDialog', async () => {
     const result = await dialog.showOpenDialog({
@@ -235,10 +244,9 @@ export function registerIpc(store: Store, lan: LanBridge = NO_LAN): void {
       store.save('library')
     }
     // 读完标记要单独存一份：它得能跟着记录同步走（library.json 不参与同步）
-    if (typeof (patch as { finished?: unknown }).finished === 'boolean') {
-      store.setFinished(id, (patch as { finished: boolean }).finished)
-    }
-    return store.books
+    const finishedPatch = (patch as { finished?: unknown }).finished
+    if (typeof finishedPatch === 'boolean') store.setFinished(id, finishedPatch)
+    return store.books.map((item) => ({ ...item, finished: Boolean(store.finished[item.id]) }))
   })
 
   handle('library:clearRecords', (id: string) => {
@@ -290,7 +298,11 @@ export function registerIpc(store: Store, lan: LanBridge = NO_LAN): void {
     const ref = meta.chapters[index]
     if (!ref) throw new Error('章节不存在')
     const chapter = await readChapter(cacheDir, meta.opfDir, ref.href, toMediaUrl)
-    return { index, label: ref.label, total: meta.chapters.length, html: chapter.html }
+    // 把这一章的划线 / 笔记包成 <mark> 注入：渲染进程不用自己插标记，
+    // 分页、换字号、单双栏都自动带上
+    const annotations = annotationsOfChapter(store.annotations, bookId, index)
+    const html = applyAnnotations(chapter.html, annotations)
+    return { index, label: ref.label, total: meta.chapters.length, html }
   })
 
   handle('reader:progress', (bookId: string, patch: Partial<Progress>) => store.setProgress(bookId, patch))
@@ -356,6 +368,38 @@ export function registerIpc(store: Store, lan: LanBridge = NO_LAN): void {
   handle('bookmarks:restore', (id: string): Bookmark | null => {
     const restored = store.bookmarkStore.restore(id)
     if (restored) store.save('bookmarks')
+    return restored
+  })
+
+  /* ---------------- 划线 / 笔记 ---------------- */
+
+  handle('annotations:list', (bookId?: string, chapterIndex?: number): Annotation[] =>
+    store.annotationStore.list(bookId, chapterIndex)
+  )
+
+  handle('annotations:add', (input: AnnotationInput): Annotation | null => {
+    const book = store.books.find((b) => b.id === input?.bookId)
+    if (!book) return null
+    const created = store.annotationStore.add(input, store.settings.deviceId)
+    if (created) store.save('annotations')
+    return created
+  })
+
+  handle('annotations:update', (id: string, patch: AnnotationPatch): Annotation | null => {
+    const updated = store.annotationStore.update(id, patch ?? {})
+    if (updated) store.save('annotations')
+    return updated
+  })
+
+  handle('annotations:remove', (id: string): Annotation | null => {
+    const removed = store.annotationStore.remove(id)
+    if (removed) store.save('annotations')
+    return removed
+  })
+
+  handle('annotations:restore', (id: string): Annotation | null => {
+    const restored = store.annotationStore.restore(id)
+    if (restored) store.save('annotations')
     return restored
   })
 

@@ -648,6 +648,24 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.24);
 }
 
+/* 已读完：贴在封面左下，和右上角的卷号徽章错开 */
+.book-finished {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px 2px 5px;
+  border-top-right-radius: 6px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  box-shadow: 0 -1px 6px rgba(16, 24, 40, 0.18);
+}
+
 .book-progress {
   position: absolute;
   left: 0;
@@ -2801,4 +2819,632 @@
   height: 60px;
   background: var(--bg, #f4f5f7);
   pointer-events: none;
+}
+
+/* ================= 书签 ================= */
+
+/* 阅读器顶栏的书签按钮：气泡要以它为锚点 */
+.reader-bookmark {
+  position: relative;
+  display: inline-flex;
+}
+
+.bookmark-pop {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 300px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+  padding: 12px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bookmark-pop-head {
+  font-size: 12.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bookmark-note {
+  width: 100%;
+  min-height: 70px;
+  resize: vertical;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 8px 10px;
+}
+
+.bookmark-note:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.bookmark-pop-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bookmark-pop-hint {
+  flex: 1;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.icon-btn.danger:hover {
+  background: rgba(217, 83, 79, 0.12);
+  color: var(--danger);
+}
+
+/* 提示条上的操作按钮（删除书签后的「撤销」） */
+.toast-action {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.16);
+  flex: 0 0 auto;
+}
+
+.toast-action:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* ---------- 书签页面：左 1/3 书籍栏 + 右 2/3 卡片流 ---------- */
+
+.bm-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 24px 24px;
+}
+
+.bm-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex: 0 0 auto;
+}
+
+.bm-head-count {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.bm-split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 2fr;
+  gap: 16px;
+}
+
+.bm-books {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.bm-books-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.bm-books-foot {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.bm-book {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 10px 10px 10px 12px;
+  border-radius: var(--r-md);
+  transition: background 0.14s;
+}
+
+.bm-book:hover {
+  background: var(--hover);
+}
+
+.bm-book.active {
+  background: var(--primary-soft);
+}
+
+.bm-book.active::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--primary);
+}
+
+.bm-book-cover {
+  width: 40px;
+  height: 56px;
+  flex: 0 0 40px;
+  border-radius: 5px;
+  overflow: hidden;
+  box-shadow: 0 1px 5px rgba(16, 24, 40, 0.18);
+}
+
+.bm-book-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bm-book-cover .book-cover-fallback {
+  font-size: 8px;
+  padding: 4px;
+  -webkit-line-clamp: 4;
+}
+
+.bm-book-cover-empty {
+  width: 100%;
+  height: 100%;
+  background: var(--hover);
+}
+
+.bm-book-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.bm-book-title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bm-book.active .bm-book-title {
+  color: var(--primary);
+}
+
+.bm-book-author {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bm-book-meta {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.bm-book-progress {
+  margin-top: 6px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.bm-book-progress i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--primary);
+}
+
+.bm-detail {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.bm-detail-head {
+  flex: 0 0 auto;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bm-detail-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bm-detail-count {
+  font-weight: 400;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.bm-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 16px 20px;
+}
+
+.bm-card {
+  position: relative;
+  padding: 14px 0 14px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.bm-card:last-child {
+  border-bottom: none;
+}
+
+.bm-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 17px;
+  bottom: 17px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--primary);
+  opacity: 0.55;
+}
+
+.bm-card:hover {
+  background: var(--hover);
+  border-radius: var(--r-sm);
+}
+
+.bm-card-excerpt {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bm-card-meta {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.bm-card-chapter {
+  max-width: 46%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bm-card-note {
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: var(--hover);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bm-card-actions {
+  position: absolute;
+  top: 10px;
+  right: 0;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.14s;
+}
+
+.bm-card:hover .bm-card-actions {
+  opacity: 1;
+}
+
+.bm-list .empty {
+  padding: 60px 20px;
+}
+
+@media (max-width: 860px) {
+  .bm-split {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(140px, 40%) 1fr;
+  }
+
+  .bm-books {
+    max-height: 40vh;
+  }
+}
+
+/* ================= 阅读记录（划线 / 笔记） ================= */
+
+/* 左栏书行下方的标签：几条划线、几条笔记 */
+.bm-book-tags {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rec-tag {
+  font-size: 10.5px;
+  line-height: 1.6;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--text-3);
+}
+
+.rec-tag.note {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+/* 右栏卡片里的引文：左边一条色条，底色按划线颜色淡化 */
+.rec-quote {
+  font-size: 14.5px;
+  line-height: 1.7;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border-left: 3px solid var(--rc, #d9a800);
+  background: var(--rc-bg, rgba(255, 214, 0, 0.22));
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rec-quote.underline {
+  background: transparent;
+  border-bottom: 2px solid var(--rc, #d9a800);
+}
+
+/* 五色：正文里的标记与列表里的引文共用同一套变量 */
+.ann-yellow {
+  --rc: #d9a800;
+  --rc-bg: rgba(255, 214, 0, 0.22);
+}
+
+.ann-green {
+  --rc: #2f9e4f;
+  --rc-bg: rgba(70, 200, 120, 0.22);
+}
+
+.ann-blue {
+  --rc: #2a7fd4;
+  --rc-bg: rgba(70, 160, 255, 0.2);
+}
+
+.ann-pink {
+  --rc: #d94a86;
+  --rc-bg: rgba(255, 90, 160, 0.2);
+}
+
+.ann-purple {
+  --rc: #8a4ad9;
+  --rc-bg: rgba(160, 90, 255, 0.2);
+}
+
+/* 正文里的标记（主进程注入的 <mark class="ann ...">） */
+.reader-page mark.ann {
+  background: var(--rc-bg, rgba(255, 214, 0, 0.22));
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  cursor: pointer;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.reader-page mark.ann.ann-underline {
+  background: transparent;
+  border-bottom: 2px solid var(--rc, #d9a800);
+  border-radius: 0;
+}
+
+/* 有备注的划线：末尾跟一个可点的小图标（点了看笔记内容） */
+.ann-note-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin: 0 2px 0 1px;
+  padding: 0;
+  border-radius: 4px;
+  vertical-align: 0.35em;
+  background: var(--rc, #d9a800);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.9;
+}
+
+.ann-note-btn:hover {
+  opacity: 1;
+  transform: scale(1.12);
+  filter: none;
+}
+
+/* 「看笔记」模式下的内容展示 */
+.ann-note-view {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.reader-page mark.ann:hover {
+  filter: brightness(0.96);
+}
+
+/* ================= 划线 / 笔记的浮动菜单 ================= */
+
+.ann-toolbar {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border-2);
+  box-shadow: var(--shadow-pop);
+  transform: translate(-50%, -100%);
+  user-select: none;
+}
+
+.ann-toolbar-item {
+  height: 30px;
+  min-width: 32px;
+  padding: 0 8px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.ann-toolbar-item:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.ann-toolbar-item.on {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.ann-toolbar-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border-2);
+}
+
+.ann-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  margin: 0 2px;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.ann-swatch:hover {
+  transform: scale(1.08);
+}
+
+.ann-swatch.on {
+  border-color: var(--text-2);
+}
+
+/* 备注编辑气泡（跟着浮动菜单） */
+.ann-note-pop {
+  position: absolute;
+  z-index: 31;
+  width: 320px;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  transform: translate(-50%, 0);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ann-note-pop textarea {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 8px 10px;
+}
+
+.ann-note-pop textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.ann-note-pop-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ann-note-pop-hint {
+  flex: 1;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+/* 阅读器正文需要作为浮动菜单的定位参考 */
+.reader-body {
+  position: relative;
 }

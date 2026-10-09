@@ -1,7 +1,11 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
+  Annotation,
+  AnnotationInput,
+  AnnotationPatch,
   AppInfo,
   Book,
+  Bookmark,
   BookOpenPayload,
   ChapterPayload,
   LanConflictItem,
@@ -9,6 +13,7 @@ import type {
   Settings,
   StatsPayload
 } from '../shared/types'
+import type { BookmarkInput, BookmarkSort } from '../shared/bookmarks'
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
   ipcRenderer.invoke(channel, ...args) as Promise<T>
@@ -75,6 +80,30 @@ const api = {
     chapter: (bookId: string, index: number) => invoke<ChapterPayload>('reader:chapter', bookId, index),
     setProgress: (bookId: string, patch: Partial<Progress>) => invoke<Progress>('reader:progress', bookId, patch),
     tick: (bookId: string, seconds: number) => invoke<boolean>('reader:tick', bookId, seconds)
+  },
+  bookmarks: {
+    /** 不传 bookId 就是全部（未删除的） */
+    list: (bookId?: string, sort: BookmarkSort = 'recent') =>
+      invoke<Bookmark[]>('bookmarks:list', bookId, sort),
+    /** 这本书还能加几条 */
+    remaining: (bookId: string) => invoke<number>('bookmarks:remaining', bookId),
+    add: (input: BookmarkInput) => invoke<Bookmark | null>('bookmarks:add', input),
+    update: (id: string, patch: { note?: string; scrollRatio?: number; excerpt?: string }) =>
+      invoke<Bookmark | null>('bookmarks:update', id, patch),
+    /** 软删除，可用 restore 撤销 */
+    remove: (id: string) => invoke<Bookmark | null>('bookmarks:remove', id),
+    restore: (id: string) => invoke<Bookmark | null>('bookmarks:restore', id)
+  },
+  annotations: {
+    /** 不传 bookId 就是全部（未删除的）；传了 chapterIndex 就只看这一章 */
+    list: (bookId?: string, chapterIndex?: number) =>
+      invoke<Annotation[]>('annotations:list', bookId, chapterIndex),
+    add: (input: AnnotationInput) => invoke<Annotation | null>('annotations:add', input),
+    update: (id: string, patch: AnnotationPatch) =>
+      invoke<Annotation | null>('annotations:update', id, patch),
+    /** 软删除，可用 restore 撤销 */
+    remove: (id: string) => invoke<Annotation | null>('annotations:remove', id),
+    restore: (id: string) => invoke<Annotation | null>('annotations:restore', id)
   },
   lan: {
     reloadRecords: () => invoke<boolean>('lan:reloadRecords'),

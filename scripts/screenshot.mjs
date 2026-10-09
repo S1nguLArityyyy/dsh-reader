@@ -29,8 +29,9 @@ const env = {
   DSH_DATA_DIR: dataDir,
   DSH_SHOT_DIR: shotDir,
   DSH_LOG_FILE: join(root, 'shots', 'main.log'),
-  DSH_SHOT_LIST: process.env.SHOTS ?? 'library,stats,settings,reader,library:detail',
-  DSH_SEED_STATS: '1'
+  DSH_SHOT_LIST: process.env.SHOTS ?? 'library,stats,bookmarks,settings,reader,library:detail',
+  DSH_SEED_STATS: '1',
+  DSH_SEED_BOOKMARKS: '1'
 }
 delete env.ELECTRON_RUN_AS_NODE
 if (samples.length > 0) env.DSH_IMPORT = samples.join(';')

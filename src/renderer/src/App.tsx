@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { BarChart3, Library, Settings as SettingsIcon, Upload } from 'lucide-react'
+import { BarChart3, Bookmark as BookmarkIcon, Highlighter, Library, Settings as SettingsIcon, Upload } from 'lucide-react'
 import { useApp, type Route } from './store/app'
 import { Sidebar } from './components/Sidebar'
 import { Toaster } from './components/ui'
@@ -8,17 +8,22 @@ import { LanConflictModal } from './components/LanConflictModal'
 import { LibraryPage } from './pages/LibraryPage'
 import { StatsPage } from './pages/StatsPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { BookmarksPage } from './pages/BookmarksPage'
+import { RecordsPage } from './pages/RecordsPage'
 import { ReaderPage } from './pages/ReaderPage'
 import { applyAppearance } from './lib/appearance'
 
-const ROUTE_ORDER: Record<Route, number> = { library: 0, stats: 1, settings: 2, reader: 3 }
+const ROUTE_ORDER: Record<Route, number> = { library: 0, stats: 1, bookmarks: 2, records: 3, settings: 4, reader: 5 }
 
 function PageBody({ route }: { route: Route }) {
   if (route === 'stats') return <StatsPage />
+  if (route === 'bookmarks') return <BookmarksPage />
+  if (route === 'records') return <RecordsPage />
   if (route === 'settings') return <SettingsPage />
   return <LibraryPage />
 }
 
+/**
 /**
  * 手机端的底部导航（桌面端由 CSS 隐藏）。
  * 桌面用左侧边栏，屏宽 ≤768px 时侧边栏让位给这个，系列筛选改到书库页顶部的横向胶囊。
@@ -29,6 +34,8 @@ function MobileNav() {
   const items: Array<{ key: Route; label: string; icon: ReactNode }> = [
     { key: 'library', label: '书库', icon: <Library size={20} /> },
     { key: 'stats', label: '统计', icon: <BarChart3 size={20} /> },
+    { key: 'bookmarks', label: '书签', icon: <BookmarkIcon size={20} /> },
+    { key: 'records', label: '记录', icon: <Highlighter size={20} /> },
     { key: 'settings', label: '设置', icon: <SettingsIcon size={20} /> }
   ]
   return (

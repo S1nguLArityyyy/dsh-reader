@@ -4,9 +4,10 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
-import type { Book, Bookmark, Progress, SessionRow, Settings } from '../shared/types'
+import type { Annotation, Book, Bookmark, Progress, SessionRow, Settings } from '../shared/types'
 import { splitVolume, titleFromFileName } from './naming'
 import { BookmarkStore } from './bookmarks'
+import { AnnotationStore } from './annotations'
 import { percentByPosition } from '../shared/progress'
 
 /** 本地日期键 YYYY-MM-DD */
@@ -17,7 +18,7 @@ export function todayKey(d = new Date()): string {
   return `${y}-${m}-${day}`
 }
 
-type StoreFile = 'settings' | 'library' | 'progress' | 'sessions' | 'bookmarks' | 'finished'
+type StoreFile = 'settings' | 'library' | 'progress' | 'sessions' | 'bookmarks' | 'annotations' | 'finished'
 
 /**
  * 轻量 JSON 持久化层。
@@ -33,6 +34,8 @@ export class Store {
   sessions: SessionRow[] = []
   /** 书签（原文摘录 + 备注 + 章内位置） */
   bookmarks: Bookmark[] = []
+  /** 划线 / 笔记（原文位置 + 颜色 + 备注） */
+  annotations: Annotation[] = []
   /**
    * 手动标记「已读完」的书：`书 id → YYYY-MM-DD`。
    * 只存在 library.json 里的话，手机端的标记传不过来也传不出去 ——
@@ -51,6 +54,11 @@ export class Store {
   /** 书签的业务操作入口（增删改查、上限、墓碑） */
   get bookmarkStore(): BookmarkStore {
     return new BookmarkStore(this.bookmarks)
+  }
+
+  /** 划线 / 笔记的业务操作入口 */
+  get annotationStore(): AnnotationStore {
+    return new AnnotationStore(this.annotations)
   }
 
   get defaultBooksDir(): string {
@@ -124,10 +132,14 @@ export class Store {
     this.progress = await this.readJson<Record<string, Progress>>('progress', {})
     this.sessions = await this.readJson<SessionRow[]>('sessions', [])
     this.bookmarks = await this.readJson<Bookmark[]>('bookmarks', [])
+    this.annotations = await this.readJson<Annotation[]>('annotations', [])
     this.finished = await this.readJson<Record<string, string>>('finished', {})
 
     // 书签：清理过期墓碑、修掉越界数据、同位置去重、裁剪超出上限的历史数据
     if (this.bookmarkStore.sweep()) this.save('bookmarks')
+
+    // 划线 / 笔记：清理过期墓碑与坏记录
+    if (this.annotationStore.sweep()) this.save('annotations')
 
     // 阅读时长行补上设备号（老数据都是本机产生的），同步时才分得清哪些条目是自己的
     let sessionsFixed = false
@@ -137,6 +149,40 @@ export class Store {
         sessionsFixed = true
       }
     }
+
+    /**
+     * 手机端的设备名归一。
+     * 早期版本写的是 'mobile'，后来改成 'mobile-local' —— 若不归一，
+     * 同一台手机在统计里会被当成两台设备，时长直接相加（用户反馈"电脑和手机对不上"）。
+     */
+    const canonDevice = (id: unknown): string => {
+      const value = String(id ?? '').trim()
+      if (!value || value === 'mobile') return 'mobile-local'
+      return value
+    }
+    for (const row of this.sessions) {
+      const next = canonDevice(row.deviceId)
+      if (String(row.deviceId) !== next) {
+        row.deviceId = next
+        sessionsFixed = true
+      }
+    }
+
+    // 同一台设备 + 同一天 + 同一本书只保留一条（取时长较大的那条）
+    // 历史上因为设备名不一致，同一段阅读会被记成两行，于是被重复相加
+    if (this.sessions.length > 1) {
+      const deduped = new Map<string, SessionRow>()
+      for (const row of this.sessions) {
+        const key = `${row.bookId}|${row.day}|${canonDevice(row.deviceId)}`
+        const prev = deduped.get(key)
+        if (!prev || Number(row.seconds ?? 0) > Number(prev.seconds ?? 0)) deduped.set(key, row)
+      }
+      if (deduped.size !== this.sessions.length) {
+        this.sessions = [...deduped.values()]
+        sessionsFixed = true
+      }
+    }
+
     if (sessionsFixed) this.save('sessions')
 
     // 老版本把书籍副本放在数据目录里，统一迁移到应用根目录的 books/
@@ -287,7 +333,8 @@ export class Store {
     if (name === 'progress') return this.progress
     if (name === 'sessions') return this.sessions
     if (name === 'finished') return this.finished
-    return this.bookmarks
+    if (name === 'bookmarks') return this.bookmarks
+    return this.annotations
   }
 
   /** 防抖保存，避免高频写入 */
@@ -311,7 +358,15 @@ export class Store {
   }
 
   async flushAll(): Promise<void> {
-    for (const name of ['settings', 'library', 'progress', 'sessions', 'bookmarks', 'finished'] as StoreFile[]) {
+    for (const name of [
+      'settings',
+      'library',
+      'progress',
+      'sessions',
+      'bookmarks',
+      'annotations',
+      'finished'
+    ] as StoreFile[]) {
       const t = this.timers.get(name)
       if (t) clearTimeout(t)
       this.timers.delete(name)

@@ -2,6 +2,12 @@
 
 export type BookFormat = 'epub'
 
+/** 划线颜色 */
+export type AnnotationColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
+
+/** 划线样式：高亮底色 / 下划线 */
+export type AnnotationStyle = 'highlight' | 'underline'
+
 /** 书库中的一本书 */
 export interface Book {
   id: string
@@ -40,6 +46,12 @@ export interface Book {
   addedAt: number
   lastOpenedAt: number | null
   hidden: boolean
+  /**
+   * 用户手动标记的「已读完」。
+   * 主进程从 finished.json 合并进来（那份数据才参与局域网同步），
+   * 不写进 library.json。
+   */
+  finished?: boolean
 }
 
 /** 单本书的阅读进度（未来与手机端交换的最小单元） */
@@ -55,6 +67,88 @@ export interface Progress {
   deviceId: string
   /** 单调递增版本号，用于冲突检测 */
   rev: number
+}
+
+/** 划线 / 笔记：记录一段原文的位置、颜色与备注 */
+export interface Annotation {
+  id: string
+  bookId: string
+  chapterIndex: number
+  chapterTitle: string
+  /** 起点文本块序号（章内，按正文出现顺序） */
+  blockIndex: number
+  /** 起点所在文本节点序号（块内） */
+  tokenIndex: number
+  startOffset: number
+  /** 终点（含终点字符） */
+  endBlockIndex: number
+  endTokenIndex: number
+  endOffset: number
+  /** 选中的原文（最长 160 字），展示与锚点失效时的回退匹配都用它 */
+  quote: string
+  note: string
+  color: AnnotationColor
+  style: AnnotationStyle
+  createdAt: number
+  updatedAt: number
+  deviceId: string
+  /** 软删除墓碑；列表默认过滤掉，将来手机端同步靠它传递删除 */
+  deletedAt?: number
+}
+
+/** 新增划线 / 笔记时由渲染进程提供的字段（id / 时间 / 设备由主进程补） */
+export interface AnnotationInput {
+  bookId: string
+  chapterIndex: number
+  chapterTitle: string
+  blockIndex: number
+  tokenIndex: number
+  startOffset: number
+  endBlockIndex: number
+  endTokenIndex: number
+  endOffset: number
+  quote: string
+  note?: string
+  color: AnnotationColor
+  style: AnnotationStyle
+}
+
+/** 修改划线 / 笔记（颜色、样式、备注；带范围字段时同时改位置，重叠裁切用） */
+export interface AnnotationPatch {
+  color?: AnnotationColor
+  style?: AnnotationStyle
+  note?: string
+  blockIndex?: number
+  tokenIndex?: number
+  startOffset?: number
+  endBlockIndex?: number
+  endTokenIndex?: number
+  endOffset?: number
+  quote?: string
+}
+
+/**
+ * 书签：记住「读到哪一页」。
+ * 定位靠 chapterIndex + scrollRatio，excerpt 只用于展示与跳转校验，不含字内偏移。
+ */
+export interface Bookmark {
+  id: string
+  bookId: string
+  chapterIndex: number
+  chapterTitle: string
+  /** 章节内滚动比例 0~1 */
+  scrollRatio: number
+  /** 由章内位置换算的整书进度 0~1 */
+  percent: number
+  /** 当前位置的原文摘录（最长 60 字） */
+  excerpt: string
+  /** 用户备注，可空 */
+  note: string
+  createdAt: number
+  updatedAt: number
+  deviceId: string
+  /** 软删除墓碑；列表默认过滤掉，将来手机端同步靠它传递删除 */
+  deletedAt?: number
 }
 
 /** 按「书 + 天 + 设备」聚合的阅读会话（同步时每台设备各存一条，展示时相加） */

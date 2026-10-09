@@ -224,12 +224,26 @@ export async function startLanServer(options: LanServerOptions): Promise<LanServ
         (row) => String(row.bookId) === key && String(row.day) === day && canonDeviceId(row.deviceId) === deviceId
       )
       if (index >= 0) {
-        if (seconds > Number(rows[index].seconds ?? 0)) {
-          rows[index] = { ...rows[index], seconds }
-          sessionsMerged += 1
+        // 时长取较大值；时间戳要显式带上 —— 只写 seconds 的话，
+        // 手机推来的 lastAt 永远进不了库，「最近阅读」卡片也就永远选不中它
+        const prev = rows[index]
+        const incomingLastAt = Number(incoming.lastAt ?? 0)
+        const prevLastAt = Number(prev.lastAt ?? 0)
+        const incomingFirstAt = Number(incoming.firstAt ?? 0)
+        const prevFirstAt = Number(prev.firstAt ?? 0)
+        const firstAt =
+          prevFirstAt > 0 && incomingFirstAt > 0
+            ? Math.min(prevFirstAt, incomingFirstAt)
+            : prevFirstAt || incomingFirstAt
+        rows[index] = {
+          ...prev,
+          seconds: Math.max(seconds, Number(prev.seconds ?? 0)),
+          lastAt: Math.max(prevLastAt, incomingLastAt),
+          firstAt
         }
+        if (seconds > Number(prev.seconds ?? 0)) sessionsMerged += 1
       } else {
-        rows.push({ bookId: key, day, seconds, deviceId })
+        rows.push({ ...incoming, bookId: key, day, seconds, deviceId })
         sessionsMerged += 1
       }
     }

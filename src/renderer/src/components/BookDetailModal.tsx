@@ -1,4 +1,4 @@
-import { BookOpen, Clock, FileText, Play, Type } from 'lucide-react'
+import { BookOpen, Check, Clock, FileText, Play, Type } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useApp } from '../store/app'
 import { BookCover } from './BookCover'
@@ -24,6 +24,8 @@ export function BookDetailModal() {
   const stats = useApp((s) => s.stats)
   const closeDetail = useApp((s) => s.closeDetail)
   const openReader = useApp((s) => s.openReader)
+  const updateBook = useApp((s) => s.updateBook)
+  const toast = useApp((s) => s.toast)
 
   const book = books.find((b) => b.id === detailBookId) ?? null
   const stat = stats?.books.find((item) => item.bookId === detailBookId)
@@ -71,6 +73,20 @@ export function BookDetailModal() {
             >
               <Play size={14} fill="currentColor" />
               {percent > 0.001 ? '继续阅读' : '开始阅读'}
+            </button>
+            {/* 手动标记读完：标记后进度显示 100%，取消即可回到真实位置。
+                这份标记会跟着局域网同步走（手机端也有同一个开关） */}
+            <button
+              className={`btn ${book.finished ? 'btn-primary' : 'btn-ghost'}`}
+              title={book.finished ? '取消「已读完」标记，回到真实阅读位置' : '标记为已读完'}
+              onClick={() => {
+                const next = !book.finished
+                void updateBook(book.id, { finished: next })
+                toast('success', next ? '已标记为读完' : '已取消读完标记')
+              }}
+            >
+              <Check size={14} />
+              {book.finished ? '已读完' : '标记读完'}
             </button>
           </div>
 

@@ -125,6 +125,12 @@ export function LibraryPage() {
         >
           <BookCover book={book} />
           {book.volume ? <span className="book-badge">{book.volume}</span> : null}
+          {book.finished ? (
+            <span className="book-finished" title="已读完">
+              <Check size={12} />
+              已读完
+            </span>
+          ) : null}
           {bookPct > 0.001 ? (
             <div className="book-progress">
               <i style={{ width: `${percentText(bookPct)}%` }} />

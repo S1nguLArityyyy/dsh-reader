@@ -278,6 +278,18 @@ export function Toaster() {
             <Info size={16} />
           )}
           <span>{toast.text}</span>
+          {toast.action ? (
+            <button
+              className="toast-action"
+              onClick={(e) => {
+                e.stopPropagation()
+                toast.action?.run()
+                dismiss(toast.id)
+              }}
+            >
+              {toast.action.label}
+            </button>
+          ) : null}
         </div>
       ))}
     </div>

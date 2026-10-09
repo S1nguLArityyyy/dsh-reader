@@ -6,7 +6,10 @@ export function computeStats(store: Store): StatsPayload {
   const books = store.books.filter((b) => !b.hidden)
   const progress = store.progress
 
-  const finishedCount = books.filter((b) => (progress[b.id]?.percent ?? 0) >= 0.99).length
+  // 已读完 = 用户手动标记过（finished.json，会跟着局域网同步）+ 进度自然读满的
+  const finishedCount = books.filter(
+    (b) => Boolean(store.finished[b.id]) || (progress[b.id]?.percent ?? 0) >= 0.99
+  ).length
   const totalSeconds = store.sessions.reduce((sum, s) => sum + s.seconds, 0)
   const readBookIds = new Set(store.sessions.map((s) => s.bookId))
   const averageSeconds = readBookIds.size > 0 ? Math.round(totalSeconds / readBookIds.size) : 0
