@@ -5,7 +5,8 @@
  *   书   → exe 旁的 books\        （默认 D:\DshReaderApp\books，可用 DSH_BOOKS_DIR 覆盖）
  *   数据 → %APPDATA%\Dsh Reader   （可用 DSH_DATA_DIR 覆盖）
  *
- * 用法：node scripts/import-books.mjs [源目录]
+ * 用法：node scripts/import-books.mjs <EPUB 目录>
+ *       （也可以用环境变量 DSH_IMPORT_DIR 指定）
  * 注意：导入前先关掉 Dsh Reader，避免两边同时写 library.json。
  */
 import { existsSync, readdirSync } from 'node:fs'
@@ -13,8 +14,13 @@ import { basename, join, resolve } from 'node:path'
 import { Store } from '../src/main/store'
 import { importMany } from '../src/main/library'
 
-const DEFAULT_SOURCE = 'D:\\桌面\\dshreader开发资料\\书本'
-const source = resolve(process.argv[2] ?? process.env.DSH_IMPORT_DIR ?? DEFAULT_SOURCE)
+// 源目录必须显式给出：以前这里写死了作者本机的路径，公开仓库里不该出现
+const sourceArg = (process.argv[2] ?? process.env.DSH_IMPORT_DIR ?? '').trim()
+if (!sourceArg) {
+  console.error('用法：node scripts/import-books.mjs <EPUB 目录>\n（也可用环境变量 DSH_IMPORT_DIR 指定）')
+  process.exit(1)
+}
+const source = resolve(sourceArg)
 const dataDir = resolve(process.env.DSH_DATA_DIR ?? join(process.env.APPDATA ?? '.', 'Dsh Reader'))
 const booksDir = resolve(process.env.DSH_BOOKS_DIR ?? 'D:\\DshReaderApp\\books')
 // Store 从环境变量读书籍目录，必须在构造之前设好
