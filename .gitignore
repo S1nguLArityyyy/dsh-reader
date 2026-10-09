@@ -26,3 +26,6 @@ src/main/baidu-credentials.ts
 
 # 开发过程记录（只给协作时看，不进仓库）
 docs/
+
+# 本机 GitHub 登录脚本（个人代理与路径，不进公开仓库）
+login-github.bat
