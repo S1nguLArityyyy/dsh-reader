@@ -117,11 +117,23 @@ check(
   '没过期的墓碑保留',
   !isExpiredTombstone(make({ deletedAt: Date.now() - 2 * 86400000 }))
 )
-check('时间显示：今天', /^今天 \d{2}:\d{2}$/.test(bookmarkTimeText(Date.now())))
+/**
+ * 时间显示的相对值必须【基于今天的零点】倒推，不能用固定的"N 小时前"。
+ * 原来写的是 Date.now() - 26h，它只在当前时间晚于 02:00 时才落在昨天：
+ * 凌晨 00:52 跑的时候 26 小时前是【前天】，断言就必然失败（CI 或半夜跑会假报警）。
+ */
+const nowForTime = Date.now()
+const nowDate = new Date(nowForTime)
+const startOfToday = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime()
+const DAY = 86400000
+
+check('时间显示：今天', /^今天 \d{2}:\d{2}$/.test(bookmarkTimeText(nowForTime)))
 check(
   '时间显示：昨天',
-  /^昨天 \d{2}:\d{2}$/.test(bookmarkTimeText(Date.now() - 26 * 3600 * 1000))
+  // 昨天 23:00：无论几点跑，都稳稳落在昨天
+  /^昨天 \d{2}:\d{2}$/.test(bookmarkTimeText(startOfToday - 3600000))
 )
+check('时间显示：前天', /^\d{1,2}月\d{1,2}日$/.test(bookmarkTimeText(startOfToday - DAY - 3600000)))
 
 /* ---------------- 4. BookmarkStore 业务 ---------------- */
 
